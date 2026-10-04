@@ -16,6 +16,6 @@ pytest
 
 **Exports currently contain original data.** Snapshot requires `--allow-unmasked` until deterministic masking and leak checks ship. Do not use sensitive production data. Command errors omit driver diagnostics to avoid disclosing credentials or row values.
 
-Current limits: selected tables require primary keys; equality seeds only; no schema creation, direct target loading, PII detection, masking, manifest, or leak check. JSON, binary and UTF-8 strings are exported with SQL-mode-independent hex literals; this encoding is reversible and does not mask data. Other literal support depends on column types; unsupported values fail before export. The extraction foundation passes MySQL 8.0/8.4 integration CI; the full schema zoo remains pending. See [testing](docs/testing.md).
+Current limits: selected tables require primary keys; equality seeds only; no schema creation, direct target loading, PII detection, masking, manifest, or leak check. JSON, binary and UTF-8 strings are exported with SQL-mode-independent hex literals; this encoding is reversible and does not mask data. Other literal support depends on column types; unsupported values fail before export. The extraction foundation passes MySQL 8.0/8.4 integration CI; the schema zoo covers full Sakila and Employees imports plus synthetic framework shapes. Application-only links, triggers, routines and views are outside the round-trip target. See [testing](docs/testing.md).
 
 See [roadmap](docs/roadmap.md) and [security reporting](SECURITY.md).

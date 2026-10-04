@@ -21,4 +21,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["mysql: integration tests requiring a disposable MySQL 8 database"]
+markers = ["mysql: integration tests requiring a disposable MySQL 8 database",
+           "zoo: full sample databases and framework-shaped fixtures"]

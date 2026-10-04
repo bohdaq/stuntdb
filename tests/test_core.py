@@ -197,3 +197,19 @@ def test_json_null_is_distinct_from_sql_null():
         raw.executescript(sql_export(result, target.dialect))
         raw.executescript(sql_export(null_result, target.dialect))
         assert raw.execute("SELECT id, value IS NULL FROM jsons ORDER BY id").fetchall() == [(1, 0), (2, 1)]
+
+
+def test_mysql_set_time_and_spatial_literals():
+    from datetime import timedelta
+    from sqlalchemy.dialects import mysql
+    from stuntdb.literals import export_value
+    dialect = mysql.dialect(paramstyle="named")
+    column = sa.Column("features", mysql.SET("Commentaries", "Trailers"))
+    value = export_value(column, {"Trailers", "Commentaries"}, True)
+    assert "Commentaries,Trailers".encode().hex() in str(value.compile(dialect=dialect))
+    column = sa.Column("duration", mysql.TIME())
+    value = export_value(column, timedelta(hours=-27, microseconds=-123), True)
+    assert "-27:00:00.000123".encode().hex() in str(value.compile(dialect=dialect))
+    column = sa.Column("location", sa.LargeBinary(), info={"mysql_spatial": True})
+    value = export_value(column, (4326).to_bytes(4, "little") + b"\x01\x02", True)
+    assert str(value.compile(dialect=dialect)) == "ST_GeomFromWKB(X'0102', 4326)"

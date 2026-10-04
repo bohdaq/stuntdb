@@ -51,3 +51,40 @@ jobs:
       - run: python -m pytest -q -m mysql
         env:
           STUNTDB_TEST_MYSQL_URL: mysql+pymysql://root:test-only-password@127.0.0.1:3306/stuntdb_test
+  zoo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['8.0', '8.4']
+        sample: [sakila, employees, frameworks]
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql }}
+        env:
+          MYSQL_ROOT_PASSWORD: test-only-password
+          MYSQL_DATABASE: stuntdb_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptest-only-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - name: Load full upstream sample database
+        if: matrix.sample != 'frameworks'
+        run: scripts/load_zoo.sh "$STUNTDB_ZOO_SAMPLE"
+        env:
+          STUNTDB_MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          STUNTDB_ZOO_SAMPLE: ${{ matrix.sample }}
+      - run: python -m pytest -q -m zoo
+        env:
+          STUNTDB_ZOO_URL: mysql+pymysql://root:test-only-password@127.0.0.1:3306/stuntdb_test
+          STUNTDB_ZOO_SAMPLE: ${{ matrix.sample }}

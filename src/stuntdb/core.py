@@ -22,6 +22,15 @@ class Slice:
 def reflect(connection: sa.Connection) -> sa.MetaData:
     metadata = sa.MetaData()
     metadata.reflect(bind=connection)
+    if connection.dialect.name == "mysql":
+        spatial = connection.execute(sa.text(
+            "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND data_type IN "
+            "('geometry','point','linestring','polygon','multipoint',"
+            "'multilinestring','multipolygon','geometrycollection')"))
+        for table_name, column_name in spatial:
+            if table_name in metadata.tables:
+                metadata.tables[table_name].c[column_name].info["mysql_spatial"] = True
     return metadata
 
 
