@@ -130,3 +130,31 @@ def test_mysql_typed_values_roundtrip(mysql_engine, sql_mode):
             assert c.exec_driver_sql("SELECT id, payload IS NULL FROM typed_values WHERE id>1 ORDER BY id").all() == [(2, 0), (3, 1)]
         finally:
             c.exec_driver_sql("SET SESSION sql_mode = %s", (old_mode,))
+
+
+def test_mysql_masked_natural_key_roundtrip(mysql_engine):
+    from stuntdb.masking import mask_slice
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('DROP TABLE IF EXISTS masked_order')
+        c.exec_driver_sql('DROP TABLE IF EXISTS masked_user')
+        c.exec_driver_sql('CREATE TABLE masked_user (email VARCHAR(100) PRIMARY KEY, notes TEXT, payload JSON, photo BLOB) ENGINE=InnoDB')
+        c.exec_driver_sql('CREATE TABLE masked_order (id INT PRIMARY KEY, email VARCHAR(100), FOREIGN KEY(email) REFERENCES masked_user(email)) ENGINE=InnoDB')
+        c.exec_driver_sql("INSERT INTO masked_user VALUES ('canary@example.invalid', 'Private Canary Notes', '{\"secret\":\"JSON Canary\"}', X'1234')")
+        c.exec_driver_sql("INSERT INTO masked_order VALUES (1, 'canary@example.invalid')")
+    with consistent_source(mysql_engine) as c:
+        result = mask_slice(extract(c, 'masked_order', 'id', '1'), 'test-only-project-salt-1234567890')
+    script = sql_export(result, mysql_engine.dialect)
+    with mysql_engine.connect() as c:
+        c.exec_driver_sql('DELETE FROM masked_order')
+        c.exec_driver_sql('DELETE FROM masked_user')
+        c.commit()
+        with c.connection.driver_connection.cursor() as cursor:
+            for line in script.splitlines():
+                if not line.startswith('--'):
+                    cursor.execute(line)
+        assert c.exec_driver_sql('SELECT COUNT(*) FROM masked_order JOIN masked_user USING(email)').scalar_one() == 1
+        row = c.exec_driver_sql('SELECT email, notes, payload, photo FROM masked_user').one()
+        assert row[0] != 'canary@example.invalid'
+        assert row[1:] == (None, None, None)
+        c.exec_driver_sql('DROP TABLE masked_order')
+        c.exec_driver_sql('DROP TABLE masked_user')

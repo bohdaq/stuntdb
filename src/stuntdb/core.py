@@ -17,6 +17,7 @@ class IntegrityError(ValueError):
 class Slice:
     metadata: sa.MetaData
     rows: dict[str, list[dict[str, Any]]]
+    masked: bool = False
 
 
 def reflect(connection: sa.Connection) -> sa.MetaData:
@@ -136,7 +137,8 @@ def sql_export(result: Slice, dialect) -> str:
     if mysql:
         from sqlalchemy.dialects.mysql import dialect as mysql_dialect
         dialect = mysql_dialect(paramstyle="named")
-    lines = ["-- stuntdb: UNMASKED development data; requires an existing schema"]
+    status = "MASKED" if result.masked else "UNMASKED"
+    lines = [f"-- stuntdb: {status} development data; requires an existing schema"]
     if mysql:
         lines += ["SET @stuntdb_old_fk_checks = @@FOREIGN_KEY_CHECKS;",
                   "SET FOREIGN_KEY_CHECKS = 0;", "START TRANSACTION;"]
