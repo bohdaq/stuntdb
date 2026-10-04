@@ -46,4 +46,6 @@ def export_value(column, value, mysql: bool):
             # NUL bytes even when NO_BACKSLASH_ESCAPES is enabled on the target.
             return sa.literal_column("CONVERT(X'" + value.encode("utf-8").hex() + "' USING utf8mb4)")
         return sa.literal_column("CAST(X'" + value.encode("utf-8").hex() + "' AS TEXT)")
+    if isinstance(value, int) and not isinstance(value, bool):
+        return sa.literal(value, type_=sa.BigInteger())
     return value

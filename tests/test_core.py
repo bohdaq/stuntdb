@@ -213,3 +213,13 @@ def test_mysql_set_time_and_spatial_literals():
     column = sa.Column("location", sa.LargeBinary(), info={"mysql_spatial": True})
     value = export_value(column, (4326).to_bytes(4, "little") + b"\x01\x02", True)
     assert str(value.compile(dialect=dialect)) == "ST_GeomFromWKB(X'0102', 4326)"
+
+
+def test_mysql_year_export():
+    from sqlalchemy.dialects import mysql
+    from stuntdb.core import Slice
+    metadata = sa.MetaData()
+    sa.Table("films", metadata, sa.Column("id", sa.Integer, primary_key=True),
+             sa.Column("release_year", mysql.YEAR()))
+    result = Slice(metadata, {"films": [{"id": 1, "release_year": 2006}]})
+    assert "2006" in sql_export(result, mysql.dialect())

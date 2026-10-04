@@ -27,6 +27,7 @@ def zoo_engine():
 
 def roundtrip(engine, result):
     verify(result)
+    script = sql_export(result, engine.dialect)
     # Save base-table DDL, then rebuild the disposable schema without triggers or views.
     # This models the documented empty, matching target schema requirement.
     with engine.connect() as c:
@@ -41,7 +42,7 @@ def roundtrip(engine, result):
             c.exec_driver_sql(statement)
         c.exec_driver_sql("SET FOREIGN_KEY_CHECKS=1")
         with c.connection.driver_connection.cursor() as cursor:
-            for line in sql_export(result, engine.dialect).splitlines():
+            for line in script.splitlines():
                 if not line.startswith("--"):
                     cursor.execute(line)
         # Compare every restored row, including non-key types and empty tables.
@@ -92,6 +93,7 @@ def test_framework_shapes(zoo_engine):
         c.exec_driver_sql("CREATE DATABASE stuntdb_test CHARACTER SET utf8mb4")
         c.exec_driver_sql("USE stuntdb_test")
         script = (Path(__file__).parent / "zoo" / "frameworks.sql").read_text()
+        script = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("--"))
         for statement in script.split(";"):
             if statement.strip():
                 c.exec_driver_sql(statement)
