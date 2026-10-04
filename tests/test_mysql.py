@@ -82,3 +82,16 @@ def test_mysql_children(mysql_engine):
         assert result.rows["child"] == [{"id": 1, "x": 1, "y": 2}]
         cyclic = extract(c, "a", "id", "1", children=20)
         assert len(cyclic.rows["a"]) == len(cyclic.rows["b"]) == 1
+
+
+def test_mysql_consistent_read_only_snapshot(mysql_engine):
+    with consistent_source(mysql_engine) as c:
+        before = extract(c, "a", "id", "1").rows["a"][0]["note"]
+        with mysql_engine.begin() as writer:
+            writer.exec_driver_sql("UPDATE a SET note = 'changed elsewhere' WHERE id = 1")
+        assert extract(c, "a", "id", "1").rows["a"][0]["note"] == before
+        with pytest.raises(sa.exc.DBAPIError):
+            c.exec_driver_sql("INSERT INTO a (id) VALUES (100)")
+    with mysql_engine.connect() as c:
+        assert c.exec_driver_sql("SELECT note FROM a WHERE id=1").scalar_one() == "changed elsewhere"
+        assert c.exec_driver_sql("SELECT COUNT(*) FROM a WHERE id=100").scalar_one() == 0
