@@ -105,3 +105,56 @@ def test_cli_atomic_failure_and_success(tmp_path):
     assert runner.invoke(app, args).exit_code == 0
     assert "INSERT INTO node" in output.read_text()
     assert len(list(tmp_path.iterdir())) == 2
+
+
+@pytest.fixture()
+def family():
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as c:
+        c.exec_driver_sql("CREATE TABLE customer (id INTEGER PRIMARY KEY)")
+        c.exec_driver_sql("CREATE TABLE product (id INTEGER PRIMARY KEY)")
+        c.exec_driver_sql("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customer(id))")
+        c.exec_driver_sql("CREATE TABLE item (id INTEGER PRIMARY KEY, order_id INTEGER REFERENCES orders(id), product_id INTEGER REFERENCES product(id))")
+        c.exec_driver_sql("INSERT INTO customer VALUES (1), (2)")
+        c.exec_driver_sql("INSERT INTO product VALUES (10)")
+        c.exec_driver_sql("INSERT INTO orders VALUES (3,1), (4,2)")
+        c.exec_driver_sql("INSERT INTO item VALUES (5,3,10), (6,4,10)")
+    return engine
+
+
+def test_bounded_children_and_parent_closure(family):
+    with family.connect() as c:
+        zero = extract(c, "customer", "id", "1")
+        assert zero.rows["orders"] == []
+        one = extract(c, "customer", "id", "1", children=1)
+        assert one.rows["orders"] == [{"id": 3, "customer_id": 1}]
+        assert one.rows["item"] == []
+        two = extract(c, "customer", "id", "1", children=2)
+        assert len(two.rows["item"]) == 1
+        assert two.rows["product"] == [{"id": 10}]
+        assert len(two.rows["customer"]) == 1
+        assert len(two.rows["orders"]) == 1
+
+
+def test_child_cycles_terminate_and_ceiling_applies():
+    engine = fixture()
+    with engine.connect() as c:
+        result = extract(c, "a", "id", "1", children=100)
+        assert sum(map(len, result.rows.values())) == 2
+        with pytest.raises(ValueError, match="ceiling"):
+            extract(c, "a", "id", "1", max_rows=1, children=2)
+        with pytest.raises(ValueError, match="nonnegative"):
+            extract(c, "a", "id", "1", children=-1)
+
+
+def test_child_ceiling_preserves_existing_output(family, tmp_path):
+    database = tmp_path / "family.db"
+    destination = sa.create_engine(f"sqlite:///{database}")
+    with family.connect() as c, destination.connect() as target:
+        c.connection.driver_connection.backup(target.connection.driver_connection)
+    output = tmp_path / "slice.sql"
+    output.write_text("previous")
+    result = CliRunner().invoke(app, ["snapshot", f"sqlite:///{database}", "--seed", "customer.id=1",
+        "--allow-unmasked", "--children", "2", "--max-rows", "2", "-o", str(output)])
+    assert result.exit_code == 1
+    assert output.read_text() == "previous"

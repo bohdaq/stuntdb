@@ -72,3 +72,13 @@ def test_mysql_cli(mysql_engine, tmp_path):
     result = CliRunner().invoke(app, ["snapshot", url, "--seed", "a.id=1", "--allow-unmasked", "-o", str(output)])
     assert result.exit_code == 0, result.output
     assert output.exists()
+
+
+def test_mysql_children(mysql_engine):
+    with consistent_source(mysql_engine) as c:
+        result = extract(c, "parent", "x", "1", children=1)
+        assert len(result.rows["parent"]) == 2
+        # A partially NULL composite key is not a declared dependent of (1,2).
+        assert result.rows["child"] == [{"id": 1, "x": 1, "y": 2}]
+        cyclic = extract(c, "a", "id", "1", children=20)
+        assert len(cyclic.rows["a"]) == len(cyclic.rows["b"]) == 1

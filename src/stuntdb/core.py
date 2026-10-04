@@ -23,9 +23,11 @@ def reflect(connection: sa.Connection) -> sa.MetaData:
 
 
 def extract(connection: sa.Connection, table_name: str, column: str, value: str,
-            max_rows: int = 10000) -> Slice:
+            max_rows: int = 10000, children: int = 0) -> Slice:
     if max_rows < 1:
         raise ValueError("max_rows must be positive")
+    if children < 0:
+        raise ValueError("children must be nonnegative")
     metadata = reflect(connection)
     if table_name not in metadata.tables:
         raise ValueError("Unknown seed table")
@@ -36,8 +38,20 @@ def extract(connection: sa.Connection, table_name: str, column: str, value: str,
     seen: dict[str, set[tuple]] = {name: set() for name in metadata.tables}
     work = deque()
     count = 0
+    child_work = deque()
+    child_depth: dict[tuple, int] = {}
+    incoming: dict[str, list] = {name: [] for name in metadata.tables}
+    for current in metadata.tables.values():
+        for fk in current.foreign_key_constraints:
+            incoming[fk.referred_table.name].append(fk)
 
-    def add(target, records):
+    def schedule_children(target, row, depth):
+        key = (target.name, tuple(row[c.name] for c in target.primary_key.columns))
+        if depth < children and depth < child_depth.get(key, children + 1):
+            child_depth[key] = depth
+            child_work.append((target, row, depth))
+
+    def add(target, records, depth=None):
         nonlocal count
         keys = list(target.primary_key.columns)
         if not keys:
@@ -45,6 +59,8 @@ def extract(connection: sa.Connection, table_name: str, column: str, value: str,
         for record in records:
             row = dict(record)
             key = tuple(row[c.name] for c in keys)
+            if depth is not None:
+                schedule_children(target, row, depth)
             if key in seen[target.name]:
                 continue
             count += 1
@@ -54,8 +70,20 @@ def extract(connection: sa.Connection, table_name: str, column: str, value: str,
             rows[target.name].append(row)
             work.append((target, row))
 
-    add(table, connection.execute(sa.select(table).where(table.c[column] == value)).mappings())
-    while work:
+    add(table, connection.execute(sa.select(table).where(table.c[column] == value)).mappings(), depth=0)
+    while work or child_work:
+        if not work:
+            current, row, depth = child_work.popleft()
+            for fk in incoming[current.name]:
+                elements = list(fk.elements)
+                values = [row[e.column.name] for e in elements]
+                if any(v is None for v in values):
+                    continue
+                child = elements[0].parent.table
+                condition = sa.and_(*(e.parent == v for e, v in zip(elements, values)))
+                add(child, connection.execute(sa.select(child).where(condition)).mappings(),
+                    depth=depth + 1)
+            continue
         current, row = work.popleft()
         for constraint in current.foreign_key_constraints:
             elements = list(constraint.elements)
