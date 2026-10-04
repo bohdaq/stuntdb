@@ -151,3 +151,13 @@ def test_computed_columns_fail_closed():
              sa.Column('derived', sa.Integer, sa.Computed('id + 1')))
     with pytest.raises(MaskingError, match='Computed'):
         mask_slice(Slice(metadata, {'person': [{'id': 1, 'derived': 2}]}), SALT)
+
+
+def test_unique_prefix_collision_fails_closed():
+    metadata = sa.MetaData()
+    table = sa.Table('people', metadata, sa.Column('id', sa.Integer, primary_key=True),
+                     sa.Column('name', sa.String(100)))
+    sa.Index('unique_prefix', table.c.name, unique=True, mysql_length=1)
+    rows = [{'id': i, 'name': chr(65 + i)} for i in range(17)]
+    with pytest.raises(MaskingError, match='unique'):
+        mask_slice(Slice(metadata, {'people': rows}), SALT)

@@ -150,13 +150,20 @@ def mask_slice(original: Slice, salt: str) -> Slice:
     # Clearing unique fields may produce collisions; never silently emit them.
     for name, records in rows.items():
         table = metadata.tables[name]
-        constraints = [list(table.primary_key.columns)]
-        constraints += [list(u.columns) for u in table.constraints if isinstance(u, sa.UniqueConstraint)]
-        constraints += [list(i.columns) for i in table.indexes if i.unique]
-        for columns in constraints:
+        constraints = [(list(table.primary_key.columns), {})]
+        constraints += [(list(u.columns), {}) for u in table.constraints if isinstance(u, sa.UniqueConstraint)]
+        for index in table.indexes:
+            if index.unique:
+                prefix = index.dialect_options["mysql"].get("length") or {}
+                if isinstance(prefix, int):
+                    prefix = {c.name: prefix for c in index.columns}
+                constraints.append((list(index.columns), prefix))
+        for columns, prefix in constraints:
             seen = set()
             for row in records:
-                values = tuple(row[c.name] for c in columns)
+                values = tuple(row[c.name][:prefix[c.name]]
+                               if c.name in prefix and row[c.name] is not None
+                               else row[c.name] for c in columns)
                 if any(v is None for v in values):
                     continue
                 if values in seen:
