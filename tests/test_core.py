@@ -86,7 +86,7 @@ def test_mysql_export_percent_and_generated_columns():
              sa.Column("derived", sa.Integer, sa.Computed("id + 1")))
     result = Slice(metadata, {"example": [{"id": 1, "note": "50%", "derived": 2}]})
     script = sql_export(result, pymysql.dialect())
-    assert "50%" in script and "50%%" not in script
+    assert "353025" in script  # UTF-8 encoding of 50%, without SQL-mode escaping
     assert "derived" not in script
 
 
@@ -158,3 +158,42 @@ def test_child_ceiling_preserves_existing_output(family, tmp_path):
         "--allow-unmasked", "--children", "2", "--max-rows", "2", "-o", str(output)])
     assert result.exit_code == 1
     assert output.read_text() == "previous"
+
+
+def test_json_binary_and_unicode_roundtrip():
+    from stuntdb.core import Slice
+    metadata = sa.MetaData()
+    table = sa.Table("values_table", metadata,
+        sa.Column("id", sa.Integer, primary_key=True), sa.Column("data", sa.JSON),
+        sa.Column("blob", sa.LargeBinary), sa.Column("note", sa.Text))
+    expected = {"id": 1, "data": {"nested": ["雪", None, True]},
+                "blob": b"\x00\xff'\\", "note": "雪\x00\n50% O'Reilly \\ path"}
+    source = sa.create_engine("sqlite://")
+    target = sa.create_engine("sqlite://")
+    metadata.create_all(source)
+    metadata.create_all(target)
+    with source.begin() as c:
+        c.execute(table.insert().values(**expected))
+        result = extract(c, "values_table", "id", "1")
+    with target.connect() as c:
+        c.connection.driver_connection.executescript(sql_export(result, target.dialect))
+        assert dict(c.execute(sa.select(table)).mappings().one()) == expected
+
+
+def test_json_null_is_distinct_from_sql_null():
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    table = sa.Table("jsons", metadata, sa.Column("id", sa.Integer, primary_key=True),
+                     sa.Column("value", sa.JSON))
+    metadata.create_all(engine)
+    with engine.begin() as c:
+        c.exec_driver_sql("INSERT INTO jsons VALUES (1, 'null'), (2, NULL)")
+        result = extract(c, "jsons", "id", "1")
+        null_result = extract(c, "jsons", "id", "2")
+    target = sa.create_engine("sqlite://")
+    metadata.create_all(target)
+    with target.connect() as c:
+        raw = c.connection.driver_connection
+        raw.executescript(sql_export(result, target.dialect))
+        raw.executescript(sql_export(null_result, target.dialect))
+        assert raw.execute("SELECT id, value IS NULL FROM jsons ORDER BY id").fetchall() == [(1, 0), (2, 1)]

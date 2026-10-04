@@ -5,6 +5,9 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from stuntdb.keystore import temporary_keys
+from stuntdb.literals import JSONDocument, export_value, select_rows
+
 
 class IntegrityError(ValueError):
     pass
@@ -24,6 +27,11 @@ def reflect(connection: sa.Connection) -> sa.MetaData:
 
 def extract(connection: sa.Connection, table_name: str, column: str, value: str,
             max_rows: int = 10000, children: int = 0) -> Slice:
+    with temporary_keys() as keys:
+        return _extract(connection, table_name, column, value, max_rows, children, keys)
+
+
+def _extract(connection, table_name, column, value, max_rows, children, keys):
     if max_rows < 1:
         raise ValueError("max_rows must be positive")
     if children < 0:
@@ -35,42 +43,41 @@ def extract(connection: sa.Connection, table_name: str, column: str, value: str,
     if column not in table.c:
         raise ValueError("Unknown seed column")
     rows: dict[str, list[dict[str, Any]]] = {name: [] for name in metadata.tables}
-    seen: dict[str, set[tuple]] = {name: set() for name in metadata.tables}
     work = deque()
     count = 0
     child_work = deque()
-    child_depth: dict[tuple, int] = {}
     incoming: dict[str, list] = {name: [] for name in metadata.tables}
     for current in metadata.tables.values():
         for fk in current.foreign_key_constraints:
             incoming[fk.referred_table.name].append(fk)
 
     def schedule_children(target, row, depth):
-        key = (target.name, tuple(row[c.name] for c in target.primary_key.columns))
-        if depth < children and depth < child_depth.get(key, children + 1):
-            child_depth[key] = depth
+        key = tuple(row[c.name] for c in target.primary_key.columns)
+        if depth < children and keys.shallower(target.name, key, depth):
             child_work.append((target, row, depth))
 
     def add(target, records, depth=None):
         nonlocal count
-        keys = list(target.primary_key.columns)
-        if not keys:
+        primary_columns = list(target.primary_key.columns)
+        if not primary_columns:
             raise ValueError(f"Table {target.name} requires a primary key")
         for record in records:
             row = dict(record)
-            key = tuple(row[c.name] for c in keys)
+            for column in target.c:
+                if isinstance(column.type, sa.JSON) and row[column.name] is not None:
+                    row[column.name] = JSONDocument(row[column.name])
+            key = tuple(row[c.name] for c in primary_columns)
             if depth is not None:
                 schedule_children(target, row, depth)
-            if key in seen[target.name]:
+            if not keys.add(target.name, key):
                 continue
             count += 1
             if count > max_rows:
                 raise ValueError("Row ceiling exceeded; no output written")
-            seen[target.name].add(key)
             rows[target.name].append(row)
             work.append((target, row))
 
-    add(table, connection.execute(sa.select(table).where(table.c[column] == value)).mappings(), depth=0)
+    add(table, connection.execute(select_rows(table).where(table.c[column] == value)).mappings(), depth=0)
     while work or child_work:
         if not work:
             current, row, depth = child_work.popleft()
@@ -81,7 +88,7 @@ def extract(connection: sa.Connection, table_name: str, column: str, value: str,
                     continue
                 child = elements[0].parent.table
                 condition = sa.and_(*(e.parent == v for e, v in zip(elements, values)))
-                add(child, connection.execute(sa.select(child).where(condition)).mappings(),
+                add(child, connection.execute(select_rows(child).where(condition)).mappings(),
                     depth=depth + 1)
             continue
         current, row = work.popleft()
@@ -93,7 +100,7 @@ def extract(connection: sa.Connection, table_name: str, column: str, value: str,
                 continue
             parent = elements[0].column.table
             condition = sa.and_(*(e.column == v for e, v in zip(elements, values)))
-            add(parent, connection.execute(sa.select(parent).where(condition)).mappings())
+            add(parent, connection.execute(select_rows(parent).where(condition)).mappings())
     result = Slice(metadata, rows)
     verify(result)
     return result
@@ -129,7 +136,9 @@ def sql_export(result: Slice, dialect) -> str:
     for name, records in result.rows.items():
         table = result.metadata.tables[name]
         for row in records:
-            lines.append(str(table.insert().values(**{k: v for k, v in row.items() if table.c[k].computed is None}).compile(
+            lines.append(str(table.insert().values(**{k: export_value(table.c[k], v, mysql)
+                                                  for k, v in row.items()
+                                                  if table.c[k].computed is None}).compile(
                 dialect=dialect, compile_kwargs={"literal_binds": True})) + ";")
     lines.append("COMMIT;")
     if mysql:

@@ -23,7 +23,7 @@ def mysql_engine():
         pytest.fail("Integration tests require a dedicated stuntdb_test database")
     with engine.begin() as c:
         c.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
-        for name in ["child", "parent", "b", "a"]:
+        for name in ["typed_values", "child", "parent", "b", "a"]:
             c.exec_driver_sql(f"DROP TABLE IF EXISTS {name}")
         c.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
         c.exec_driver_sql("CREATE TABLE a (id INT PRIMARY KEY, b_id INT, note VARCHAR(200), derived INT GENERATED ALWAYS AS (id + 1) STORED) ENGINE=InnoDB")
@@ -97,3 +97,36 @@ def test_mysql_consistent_read_only_snapshot(mysql_engine):
     with mysql_engine.connect() as c:
         assert c.exec_driver_sql("SELECT note FROM a WHERE id=1").scalar_one() == "changed elsewhere"
         assert c.exec_driver_sql("SELECT COUNT(*) FROM a WHERE id=100").scalar_one() == 0
+
+
+@pytest.mark.parametrize("sql_mode", ["", "NO_BACKSLASH_ESCAPES"])
+def test_mysql_typed_values_roundtrip(mysql_engine, sql_mode):
+    import json
+    note = "雪\x00\n50% O'Reilly \\ path"
+    blob = b"\x00\xff'\\"
+    payload = {"nested": ["雪", None, True]}
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql("CREATE TABLE typed_values (id INT PRIMARY KEY, note TEXT, blob_value BLOB, payload JSON) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+        c.exec_driver_sql("INSERT INTO typed_values VALUES (1, %s, %s, %s)",
+                          (note, blob, json.dumps(payload)))
+        c.exec_driver_sql("INSERT INTO typed_values (id, payload) VALUES (2, 'null'), (3, NULL)")
+    with consistent_source(mysql_engine) as c:
+        results = [extract(c, "typed_values", "id", str(i)) for i in (1, 2, 3)]
+    with mysql_engine.connect() as c:
+        old_mode = c.exec_driver_sql("SELECT @@SESSION.sql_mode").scalar_one()
+        c.exec_driver_sql("DELETE FROM typed_values")
+        c.commit()
+        c.exec_driver_sql("SET SESSION sql_mode = %s", (sql_mode,))
+        try:
+            with c.connection.driver_connection.cursor() as cursor:
+                for result in results:
+                    for line in sql_export(result, mysql_engine.dialect).splitlines():
+                        if not line.startswith("--"):
+                            cursor.execute(line)
+            row = c.exec_driver_sql("SELECT note, blob_value, payload FROM typed_values WHERE id=1").one()
+            assert row[0] == note
+            assert row[1] == blob
+            assert json.loads(row[2]) == payload
+            assert c.exec_driver_sql("SELECT id, payload IS NULL FROM typed_values WHERE id>1 ORDER BY id").all() == [(2, 0), (3, 1)]
+        finally:
+            c.exec_driver_sql("SET SESSION sql_mode = %s", (old_mode,))

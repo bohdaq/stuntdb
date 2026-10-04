@@ -17,4 +17,4 @@ docker stop stuntdb-mysql-test
 
 CI defines the same integration suite for MySQL 8.0 and 8.4. Fixtures cover mutual cycles, composite and nullable references, generated columns, special characters and a SQL round trip with restored foreign-key checks. Local unit fixtures also cover self-references, missing parents, row ceilings, cycle reporting and atomic output failure, bounded child depth, cyclic child traversal and parent closure for selected children.
 
-The full Sakila / Employees / Django / WordPress schema zoo remains pending. Configuring CI does not establish that integration tests pass; inspect the actual CI results before releasing.
+The full Sakila / Employees / Django / WordPress schema zoo remains pending. The extraction foundation passed MySQL 8.0/8.4 CI in PR #1. Inspect current CI results before releasing. Additional tests exercise JSON versus SQL null, binary data, Unicode, NUL bytes and NO_BACKSLASH_ESCAPES. Hypothesis checks parent closure against an independent graph algorithm for 75 generated cases. Temporary key-store cleanup is checked on success and failure.
