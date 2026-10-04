@@ -15,6 +15,6 @@ STUNTDB_TEST_MYSQL_URL='mysql+pymysql://root:test-only-password@127.0.0.1:33060/
 docker stop stuntdb-mysql-test
 ```
 
-CI defines the same integration suite for MySQL 8.0 and 8.4. Fixtures cover mutual cycles, composite and nullable references, generated columns, special characters and a SQL round trip with restored foreign-key checks. Local unit fixtures also cover self-references, missing parents, row ceilings, cycle reporting and atomic output failure.
+CI defines the same integration suite for MySQL 8.0 and 8.4. Fixtures cover mutual cycles, composite and nullable references, generated columns, special characters and a SQL round trip with restored foreign-key checks. Local unit fixtures also cover self-references, missing parents, row ceilings, cycle reporting and atomic output failure, bounded child depth, cyclic child traversal and parent closure for selected children.
 
 The full Sakila / Employees / Django / WordPress schema zoo remains pending. Configuring CI does not establish that integration tests pass; inspect the actual CI results before releasing.

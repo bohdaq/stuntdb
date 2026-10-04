@@ -29,7 +29,8 @@ def inspect(source: str):
 @app.command()
 def snapshot(source: str, seed: str = typer.Option(...),
              output: Path = typer.Option(..., "--output", "-o"),
-             allow_unmasked: bool = typer.Option(False), max_rows: int = 10000):
+             allow_unmasked: bool = typer.Option(False), max_rows: int = 10000,
+             children: int = typer.Option(0, min=0)):
     """Extract seed rows and all declared parents, including cycles."""
     if not allow_unmasked:
         typer.echo("Masking is not implemented yet. Explicit --allow-unmasked is required.", err=True)
@@ -39,7 +40,7 @@ def snapshot(source: str, seed: str = typer.Option(...),
         table, column = left.rsplit(".", 1)
         engine = engine_for(source)
         with consistent_source(engine) as connection:
-            result = extract(connection, table, column, value, max_rows)
+            result = extract(connection, table, column, value, max_rows, children)
             sql = sql_export(result, engine.dialect)
         # Stage a complete export, then atomically replace the destination.
         temporary = None

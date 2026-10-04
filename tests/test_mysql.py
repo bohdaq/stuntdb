@@ -52,9 +52,11 @@ def test_mysql_cycle_export_roundtrip(mysql_engine):
         c.commit()
         c.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
         # Each generated statement occupies one line for this fixture.
-        for line in script.splitlines():
-            if not line.startswith("--"):
-                c.exec_driver_sql(line)
+        # Execute the SQL file without DBAPI placeholder interpolation.
+        with c.connection.driver_connection.cursor() as cursor:
+            for line in script.splitlines():
+                if not line.startswith("--"):
+                    cursor.execute(line)
         assert c.exec_driver_sql("SELECT id, b_id, note, derived FROM a").one() == (1, 2, "50% O'Reilly \\ path", 2)
         assert c.exec_driver_sql("SELECT @@FOREIGN_KEY_CHECKS").scalar_one() == 1
         assert c.exec_driver_sql("SELECT COUNT(*) FROM a LEFT JOIN b ON a.b_id=b.id WHERE b.id IS NULL").scalar_one() == 0
@@ -72,3 +74,26 @@ def test_mysql_cli(mysql_engine, tmp_path):
     result = CliRunner().invoke(app, ["snapshot", url, "--seed", "a.id=1", "--allow-unmasked", "-o", str(output)])
     assert result.exit_code == 0, result.output
     assert output.exists()
+
+
+def test_mysql_children(mysql_engine):
+    with consistent_source(mysql_engine) as c:
+        result = extract(c, "parent", "x", "1", children=1)
+        assert len(result.rows["parent"]) == 2
+        # A partially NULL composite key is not a declared dependent of (1,2).
+        assert result.rows["child"] == [{"id": 1, "x": 1, "y": 2}]
+        cyclic = extract(c, "a", "id", "1", children=20)
+        assert len(cyclic.rows["a"]) == len(cyclic.rows["b"]) == 1
+
+
+def test_mysql_consistent_read_only_snapshot(mysql_engine):
+    with consistent_source(mysql_engine) as c:
+        before = extract(c, "a", "id", "1").rows["a"][0]["note"]
+        with mysql_engine.begin() as writer:
+            writer.exec_driver_sql("UPDATE a SET note = 'changed elsewhere' WHERE id = 1")
+        assert extract(c, "a", "id", "1").rows["a"][0]["note"] == before
+        with pytest.raises(sa.exc.DBAPIError):
+            c.exec_driver_sql("INSERT INTO a (id) VALUES (100)")
+    with mysql_engine.connect() as c:
+        assert c.exec_driver_sql("SELECT note FROM a WHERE id=1").scalar_one() == "changed elsewhere"
+        assert c.exec_driver_sql("SELECT COUNT(*) FROM a WHERE id=100").scalar_one() == 0
