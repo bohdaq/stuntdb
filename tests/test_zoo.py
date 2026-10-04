@@ -6,6 +6,8 @@ import pytest
 import sqlalchemy as sa
 
 from stuntdb.core import extract, reflect, sql_export, verify
+from stuntdb.config import generated_config, validate_schema
+from stuntdb.masking import mask_slice
 from stuntdb.literals import select_rows, JSONDocument
 from stuntdb.schema import cycles
 from stuntdb.source import consistent_source, engine_for
@@ -82,7 +84,20 @@ def test_sample_database(zoo_engine):
             result = extract(c, "employees", "emp_no", "10001", children=1)
             assert result.rows["salaries"] and result.rows["titles"] and result.rows["departments"]
             assert len(result.rows["employees"]) == 1
+    # These are explicit sample-test decisions, not suggested production rules.
+    # Enum/SET/spatial and birth dates are retained, so this is not a fully
+    # anonymized dataset. The test proves configured masking and restoration.
+    settings = generated_config(result.metadata)
+    reviewed = {name: ('keep' if action == 'review' else action)
+                for name, action in settings['rules'].items()}
+    settings['rules'] = reviewed
+    validate_schema(settings, result.metadata)
+    masked = mask_slice(result, 'test-only-project-salt-1234567890', reviewed)
+    assert masked.masked
+    changed = 'customer' if sample == 'sakila' else 'employees'
+    assert masked.rows[changed] != result.rows[changed]
     roundtrip(zoo_engine, result)
+    roundtrip(zoo_engine, masked)
 
 
 def test_framework_shapes(zoo_engine):

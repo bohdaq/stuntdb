@@ -158,3 +158,30 @@ def test_mysql_masked_natural_key_roundtrip(mysql_engine):
         assert row[1:] == (None, None, None)
         c.exec_driver_sql('DROP TABLE masked_order')
         c.exec_driver_sql('DROP TABLE masked_user')
+
+
+def test_mysql_reviewed_config_cli(mysql_engine, tmp_path):
+    import json
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('DROP TABLE IF EXISTS reviewed_person')
+        c.exec_driver_sql("CREATE TABLE reviewed_person (id INT PRIMARY KEY, email VARCHAR(100), status ENUM('active','inactive') NOT NULL) ENGINE=InnoDB")
+        c.exec_driver_sql("INSERT INTO reviewed_person VALUES (1,'canary@example.invalid','active')")
+    config = tmp_path / 'stuntdb.json'
+    url = mysql_engine.url.render_as_string(hide_password=False)
+    runner = CliRunner()
+    assert runner.invoke(app, ['init', url, '-o', str(config)]).exit_code == 0
+    settings = json.loads(config.read_text())
+    settings['seed'] = 'reviewed_person.id=1'
+    output = tmp_path / 'snapshot.sql'
+    config.write_text(json.dumps(settings))
+    args = ['snapshot', '--config', str(config), '-o', str(output)]
+    env = {'STUNTDB_SOURCE': url, 'STUNTDB_SALT': 'test-only-project-salt-1234567890'}
+    assert runner.invoke(app, args, env=env).exit_code == 1
+    assert not output.exists()
+    settings['rules']['reviewed_person.status'] = 'keep'
+    config.write_text(json.dumps(settings))
+    result = runner.invoke(app, args, env=env)
+    assert result.exit_code == 0, result.output
+    assert 'canary@example.invalid'.encode().hex() not in output.read_text()
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('DROP TABLE reviewed_person')

@@ -4,6 +4,8 @@ import hmac
 import json
 import re
 from collections import defaultdict
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import sqlalchemy as sa
 
@@ -53,7 +55,24 @@ def _strings(value):
     return []
 
 
+def _scalar_fingerprint(value):
+    if isinstance(value, bool):
+        return ('bool', value)
+    if isinstance(value, (int, float, Decimal)):
+        return ('number', str(Decimal(str(value)).normalize()))
+    if isinstance(value, datetime):
+        return ('datetime', value.isoformat())
+    if isinstance(value, date):
+        return ('date', value.isoformat())
+    if isinstance(value, timedelta):
+        return ('time', value.total_seconds())
+    return None
+
+
 def check_leaks(original: Slice, masked: Slice, columns):
+    columns = list(columns)
+    scalar_originals = {_scalar_fingerprint(row[column]) for name, column in columns
+                        for row in original.rows[name]} - {None}
     originals = {s for name, column in columns for row in original.rows[name]
                  for s in _strings(row[column])}
     fingerprints = {hashlib.sha256(s.encode()).digest() for s in originals}
@@ -61,6 +80,8 @@ def check_leaks(original: Slice, masked: Slice, columns):
     for rows in masked.rows.values():
         for row in rows:
             for value in row.values():
+                if _scalar_fingerprint(value) in scalar_originals:
+                    raise LeakError("Source scalar survived masking")
                 for s in _strings(value):
                     if hashlib.sha256(s.encode()).digest() in fingerprints:
                         raise LeakError("Source value survived masking")
@@ -68,10 +89,14 @@ def check_leaks(original: Slice, masked: Slice, columns):
                         raise LeakError("Source value survived inside output text")
 
 
-def mask_slice(original: Slice, salt: str) -> Slice:
+def mask_slice(original: Slice, salt: str, rules: dict[str, str] | None = None) -> Slice:
     if len(salt.encode()) < 16:
         raise MaskingError("Salt must contain at least 16 bytes")
     metadata = original.metadata
+    rules = rules or {}
+    known = {f'{t.name}.{c.name}' for t in metadata.tables.values() for c in t.c}
+    if set(rules) - known or any(v not in {'auto', 'review', 'keep', 'clear', 'token'} for v in rules.values()):
+        raise MaskingError("Unknown column or rule")
     policies = {}
     groups = domains(metadata)
     key_columns = {c for t in metadata.tables.values() for c in t.primary_key}
@@ -83,26 +108,45 @@ def mask_slice(original: Slice, salt: str) -> Slice:
         present = any(original.rows[c.table.name] for c in group)
         if not present:
             continue
-        if any(c.computed is not None for c in group):
-            raise MaskingError("Computed columns require reviewed masking rules")
-        if any(isinstance(c.type, sa.Enum) or hasattr(c.type, 'values') for c in group):
-            raise MaskingError("Enum and SET columns require reviewed masking rules")
-        strings = all(isinstance(c.type, sa.String) for c in group)
-        sensitive = any(PRIVATE_NAME.search(c.name) for c in group)
-        if strings:
-            clear = any(isinstance(c.type, sa.Text) for c in group) and not any(c in key_columns for c in group)
-            strategy = "clear" if clear else "token"
-        elif all(isinstance(c.type, (sa.JSON, sa.LargeBinary)) for c in group):
-            if any(c in key_columns for c in group):
-                raise MaskingError("Opaque relationship keys require reviewed masking rules")
-            strategy = "clear"
-        elif sensitive or any(c.info.get('mysql_spatial') for c in group):
-            raise MaskingError("Sensitive non-text columns require reviewed masking rules")
-        elif all(isinstance(c.type, (sa.Integer, sa.Numeric, sa.Float, sa.Boolean, sa.Date, sa.DateTime, sa.Time))
-                 or c.type.__class__.__name__ in {"YEAR", "BIT"} for c in group):
-            strategy = "keep"
+        explicit = {rules.get(f'{c.table.name}.{c.name}', 'auto') for c in group} - {'auto'}
+        if 'review' in explicit:
+            raise MaskingError("Selected columns still require review")
+        if len(explicit) > 1:
+            raise MaskingError("Conflicting rules in a relationship domain")
+        strategy = next(iter(explicit), None)
+        if strategy is not None:
+            if any(c.computed is not None for c in group):
+                raise MaskingError("Computed-column masking is not supported")
+            if strategy == 'token' and any(not isinstance(c.type, sa.String) or isinstance(c.type, sa.Enum) or hasattr(c.type, 'values') for c in group):
+                raise MaskingError("Token rules require ordinary string columns")
+            if strategy == 'clear':
+                if any(c in key_columns for c in group):
+                    raise MaskingError("Cannot clear relationship or primary keys")
+                if any(not c.nullable and not isinstance(c.type, (sa.String, sa.JSON, sa.LargeBinary)) for c in group):
+                    raise MaskingError("Required scalar columns cannot be cleared")
+                if any(not c.nullable and (isinstance(c.type, sa.Enum) or hasattr(c.type, 'values')) for c in group):
+                    raise MaskingError("Required enum/SET columns cannot be cleared")
         else:
-            raise MaskingError("Unknown column types require reviewed masking rules")
+            if any(c.computed is not None for c in group):
+                raise MaskingError("Computed columns require reviewed masking rules")
+            if any(isinstance(c.type, sa.Enum) or hasattr(c.type, 'values') for c in group):
+                raise MaskingError("Enum and SET columns require reviewed masking rules")
+            strings = all(isinstance(c.type, sa.String) for c in group)
+            sensitive = any(PRIVATE_NAME.search(c.name) for c in group)
+            if strings:
+                clear = any(isinstance(c.type, sa.Text) for c in group) and not any(c in key_columns for c in group)
+                strategy = "clear" if clear else "token"
+            elif all(isinstance(c.type, (sa.JSON, sa.LargeBinary)) for c in group):
+                if any(c in key_columns for c in group):
+                    raise MaskingError("Opaque relationship keys require reviewed masking rules")
+                strategy = "clear"
+            elif sensitive or any(c.info.get('mysql_spatial') for c in group):
+                raise MaskingError("Sensitive non-text columns require reviewed masking rules")
+            elif all(isinstance(c.type, (sa.Integer, sa.Numeric, sa.Float, sa.Boolean, sa.Date, sa.DateTime, sa.Time))
+                     or c.type.__class__.__name__ in {"YEAR", "BIT"} for c in group):
+                strategy = "keep"
+            else:
+                raise MaskingError("Unknown column types require reviewed masking rules")
         label = min(f"{c.table.name}.{c.name}" for c in group)
         length = min([c.type.length for c in group if getattr(c.type, 'length', None)] or [32])
         for c in group:
