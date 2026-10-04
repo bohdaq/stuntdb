@@ -52,9 +52,11 @@ def test_mysql_cycle_export_roundtrip(mysql_engine):
         c.commit()
         c.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
         # Each generated statement occupies one line for this fixture.
-        for line in script.splitlines():
-            if not line.startswith("--"):
-                c.exec_driver_sql(line)
+        # Execute the SQL file without DBAPI placeholder interpolation.
+        with c.connection.driver_connection.cursor() as cursor:
+            for line in script.splitlines():
+                if not line.startswith("--"):
+                    cursor.execute(line)
         assert c.exec_driver_sql("SELECT id, b_id, note, derived FROM a").one() == (1, 2, "50% O'Reilly \\ path", 2)
         assert c.exec_driver_sql("SELECT @@FOREIGN_KEY_CHECKS").scalar_one() == 1
         assert c.exec_driver_sql("SELECT COUNT(*) FROM a LEFT JOIN b ON a.b_id=b.id WHERE b.id IS NULL").scalar_one() == 0
