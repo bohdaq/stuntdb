@@ -148,17 +148,22 @@ def verify_command(target: str, manifest: Path = typer.Option(...),
 
 
 @app.command()
-def init(source: str, output: Path = typer.Option(Path('stuntdb.json'), '--output', '-o')):
-    """Write a schema-only masking config for review; never store the source URL."""
+def init(source: str, output: Path = typer.Option(Path('stuntdb.json'), '--output', '-o'),
+         sample_rows: int = typer.Option(100, min=0, max=1000)):
+    """Write reviewed masking suggestions; --sample-rows 0 reads only schema."""
     try:
         engine = engine_for(source)
-        with engine.connect() as connection:
-            settings = generated_config(reflect(connection))
+        with consistent_source(engine) as connection:
+            metadata = reflect(connection)
+            settings = generated_config(metadata)
+            if sample_rows:
+                from stuntdb.detection import sample_suggestions
+                settings['detection'] = sample_suggestions(connection, metadata, settings, sample_rows)
         content = json.dumps(settings, indent=2, sort_keys=True) + '\n'
         # Exclusive create protects previously reviewed rules from overwriting.
         with output.open('x', encoding='utf-8') as handle:
             handle.write(content)
-        typer.echo('Wrote schema-only config. Review rules and set a seed before snapshotting.')
+        typer.echo('Wrote value-free config. Review rules and set a seed before snapshotting.')
     except Exception:
         typer.echo('Init failed; check source permissions or use a new output path.', err=True)
         raise typer.Exit(1)

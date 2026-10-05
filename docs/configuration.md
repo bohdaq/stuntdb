@@ -1,6 +1,6 @@
 # Reviewed configuration
 
-`stuntdb init SOURCE -o stuntdb.json` reflects the schema without reading row values. It writes a JSON config containing a schema baseline and one rule per column. It never writes the source URL, credentials or salt; those are referenced by environment-variable names. Existing files are not overwritten.
+`stuntdb init SOURCE -o stuntdb.json` reflects the schema and samples up to 100 rows per eligible table for local format hints. Use `--sample-rows 0` for schema-only reflection. It writes a JSON config containing a schema baseline and one rule per column. It never writes the source URL, credentials or salt; those are referenced by environment-variable names. Existing files are not overwritten.
 
 ```sh
 # Set STUNTDB_SOURCE and STUNTDB_SALT privately in your shell or secret manager.
@@ -9,7 +9,7 @@ stuntdb init "$STUNTDB_SOURCE" -o stuntdb.json
 stuntdb snapshot --config stuntdb.json --seed 'orders.id=123' -o seed.sql
 ```
 
-The config supports `version` (1), `source_env`, `salt_env`, `seed` (one equality seed), `children`, `max_rows`, `schema`, and `rules`. Explicit command-line source, seed and traversal/salt settings override their config equivalents. Source defaults to STUNTDB_SOURCE; salt defaults to STUNTDB_SALT. Unknown fields, duplicate keys, unsupported actions and invalid bounds fail before output.
+The config supports `version` (1), `source_env`, `salt_env`, `seed` (one equality seed), `children`, `max_rows`, `schema`, `rules`, and advisory `detection` metadata. Explicit command-line source, seed and traversal/salt settings override their config equivalents. Source defaults to STUNTDB_SOURCE; salt defaults to STUNTDB_SALT. Unknown fields, duplicate keys, unsupported actions and invalid bounds fail before output.
 
 Rule actions:
 
@@ -30,4 +30,6 @@ A generated baseline records column types, nullability, primary-key membership, 
 
 The leak check remains active for transformed columns and scans kept columns too: copying a transformed source value into an explicitly kept column still fails. Direct scalar values from cleared numeric/date columns are checked in addition to strings. Low-entropy values may cause conservative failures if the same value remains elsewhere. Retained values are not privacy-protected merely because other columns are masked.
 
-JSON is used for this checkpoint to keep parsing strict and dependency-free. Multiple seeds, SQL predicates, YAML, manifests and standalone verification remain pending.
+JSON is used for this checkpoint to keep parsing strict and dependency-free. Multiple seeds, SQL predicates and YAML remain pending. Export manifests and standalone verification are documented in [verification](verification.md).
+
+See [sample-based detection](detection.md) for bounds, categories and review behavior. Detection metadata is advisory; the reviewed `rules` determine snapshot behavior.

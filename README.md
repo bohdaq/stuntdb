@@ -22,3 +22,5 @@ Current limits: selected tables require primary keys; equality seeds only; no sc
 See [roadmap](docs/roadmap.md) and [security reporting](SECURITY.md).
 
 Snapshots include a value-free manifest. Check an export or restored database with `stuntdb verify TARGET --manifest slice.sql.manifest.json`; see [verification scope and source-value checks](docs/verification.md).
+
+`stuntdb init` also offers [bounded local format detection](docs/detection.md), recording value-free suggestions and requiring review for uncertain findings. Use `--sample-rows 0` for schema-only initialization.

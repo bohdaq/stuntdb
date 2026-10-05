@@ -179,6 +179,7 @@ def test_mysql_reviewed_config_cli(mysql_engine, tmp_path):
     assert runner.invoke(app, args, env=env).exit_code == 1
     assert not output.exists()
     settings['rules']['reviewed_person.status'] = 'keep'
+    settings['rules']['reviewed_person.email'] = 'email'
     config.write_text(json.dumps(settings))
     result = runner.invoke(app, args, env=env)
     assert result.exit_code == 0, result.output

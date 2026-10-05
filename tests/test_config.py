@@ -108,10 +108,10 @@ def test_init_config_cli_roundtrip_and_drift(tmp_path):
         c.exec_driver_sql("INSERT INTO person VALUES (1, 'canary@example.invalid')")
     config = tmp_path / 'stuntdb.json'
     runner = CliRunner()
-    assert runner.invoke(app, ['init', source, '-o', str(config)]).exit_code == 0
+    assert runner.invoke(app, ['init', source, '-o', str(config), '--sample-rows', '0']).exit_code == 0
     content = config.read_text()
     assert source not in content and 'canary' not in content
-    assert runner.invoke(app, ['init', source, '-o', str(config)]).exit_code == 1
+    assert runner.invoke(app, ['init', source, '-o', str(config), '--sample-rows', '0']).exit_code == 1
     assert config.read_text() == content
     settings = json.loads(content)
     settings['seed'] = 'person.id=1'

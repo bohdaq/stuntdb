@@ -6,7 +6,7 @@ from stuntdb.masking import MaskingError
 from stuntdb.providers import PROVIDERS
 
 ACTIONS = {'auto', 'review', 'keep', 'clear', 'token'} | PROVIDERS
-FIELDS = {'version', 'source_env', 'salt_env', 'seed', 'children', 'max_rows', 'schema', 'rules'}
+FIELDS = {'version', 'source_env', 'salt_env', 'seed', 'children', 'max_rows', 'schema', 'rules', 'detection'}
 
 
 def schema_signature(metadata):
@@ -73,6 +73,9 @@ def load_config(path: Path):
         raise ValueError('Invalid masking rules')
     if 'schema' in data and not isinstance(data['schema'], dict):
         raise ValueError('Invalid schema baseline')
+    if 'detection' in data:
+        from stuntdb.detection import validate_detection
+        validate_detection(data['detection'])
     return data
 
 
