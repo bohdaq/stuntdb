@@ -50,6 +50,8 @@ def reflect(connection: sa.Connection) -> sa.MetaData:
             if table_name in metadata.tables:
                 metadata.tables[table_name].c[column_name].info["mysql_spatial"] = True
                 metadata.tables[table_name].c[column_name].info['mysql_axis_order'] = metadata.info['dialect'] == 'mysql'
+    from stuntdb.drift import capture_details
+    capture_details(connection, metadata)
     return metadata
 
 

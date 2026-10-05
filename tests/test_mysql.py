@@ -315,3 +315,37 @@ def test_json_spatial_generated_loader_roundtrip(mysql_engine, tmp_path):
         with mysql_engine.begin() as c:
             c.exec_driver_sql('DROP TABLE IF EXISTS server_json')
             c.exec_driver_sql('DROP TABLE server_types')
+
+
+@pytest.mark.parametrize('alter,feature', [
+    ("ALTER TABLE drift_shape ALTER COLUMN note SET DEFAULT 'changed-private-default'", 'default_sha256'),
+    ('ALTER TABLE drift_shape DROP INDEX note_prefix, ADD UNIQUE INDEX renamed_prefix(note(20))', 'indexes'),
+    ("ALTER TABLE drift_shape MODIFY note VARCHAR(100) COLLATE utf8mb4_unicode_ci DEFAULT 'private-default'", 'collation'),
+    ('ALTER TABLE drift_shape MODIFY derived INT GENERATED ALWAYS AS (id + 2) STORED', 'generated_sha256'),
+    ('ALTER TABLE drift_shape ADD CONSTRAINT positive_id CHECK (id > 0)', 'checks'),
+    ('ALTER TABLE drift_shape MODIFY id INT UNSIGNED NOT NULL', 'unsigned')])
+def test_server_schema_drift_prevents_loading(mysql_engine, alter, feature):
+    from stuntdb.core import reflect, Slice
+    from stuntdb.drift import SchemaDriftError
+    from stuntdb.manifest import build_manifest
+    from stuntdb.loading import load_export
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('DROP TABLE IF EXISTS drift_shape')
+        c.exec_driver_sql("CREATE TABLE drift_shape (id INT PRIMARY KEY, note VARCHAR(100) COLLATE utf8mb4_bin DEFAULT 'private-default', derived INT GENERATED ALWAYS AS (id + 1) STORED, UNIQUE INDEX note_prefix(note(12))) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+    try:
+        with mysql_engine.connect() as c:
+            metadata = reflect(c)
+        result = Slice(metadata, {name: [] for name in metadata.tables})
+        script = sql_export(result, mysql_engine.dialect)
+        receipt = build_manifest(result, script, mysql_engine.dialect.name, {})
+        with mysql_engine.begin() as c:
+            c.exec_driver_sql(alter)
+        with pytest.raises(SchemaDriftError) as failure:
+            load_export(mysql_engine, script.encode(), receipt)
+        assert any(feature in p for p in failure.value.paths), failure.value.paths
+        assert 'private-default' not in str(failure.value)
+        with mysql_engine.connect() as c:
+            assert c.exec_driver_sql('SELECT COUNT(*) FROM drift_shape').scalar_one() == 0
+    finally:
+        with mysql_engine.begin() as c:
+            c.exec_driver_sql('DROP TABLE drift_shape')

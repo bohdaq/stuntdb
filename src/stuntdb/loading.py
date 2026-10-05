@@ -4,9 +4,8 @@ import re
 
 import sqlalchemy as sa
 
-from stuntdb.config import schema_signature
 from stuntdb.core import IntegrityError, reflect
-from stuntdb.manifest import digest, verify_database
+from stuntdb.manifest import check_schema, verify_database
 
 IDENT = r'(?:`(?:``|[^`])+`|"(?:""|[^"])+"|[A-Za-z_][A-Za-z0-9_$]*)'
 INSERT = re.compile(rf'INSERT INTO ({IDENT}) \((.+)\) VALUES \((.+)\);')
@@ -123,8 +122,8 @@ def load_export(engine, content, manifest):
                 if not mysql:
                     connection.exec_driver_sql('BEGIN IMMEDIATE')
                 metadata = reflect(connection)
-                if digest(schema_signature(metadata)) != manifest['schema_sha256'] or set(metadata.tables) != set(manifest['tables']):
-                    raise IntegrityError('Target schema differs')
+                from stuntdb.source import dialect_name
+                check_schema(metadata, manifest, dialect_name(connection.dialect))
                 for table in metadata.tables.values():
                     if connection.execute(sa.select(sa.func.count()).select_from(table)).scalar_one():
                         raise IntegrityError('Target tables must be empty')

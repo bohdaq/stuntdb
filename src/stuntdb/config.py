@@ -6,19 +6,12 @@ from stuntdb.masking import MaskingError
 from stuntdb.providers import PROVIDERS
 
 ACTIONS = {'auto', 'review', 'keep', 'clear', 'token'} | PROVIDERS
-FIELDS = {'version', 'source_env', 'salt_env', 'seed', 'children', 'max_rows', 'schema', 'rules', 'detection'}
+FIELDS = {'version', 'source_env', 'salt_env', 'seed', 'children', 'max_rows', 'schema', 'rules', 'detection', 'schema_version'}
 
 
 def schema_signature(metadata):
-    return {name: {
-        'columns': {c.name: {'type': str(c.type), 'nullable': c.nullable,
-                           'primary_key': c.primary_key, 'computed': c.computed is not None,
-                           'spatial': bool(c.info.get('mysql_spatial'))} for c in table.c},
-        'references': sorted([{'from': [e.parent.name for e in fk.elements],
-                               'table': fk.referred_table.name,
-                               'to': [e.column.name for e in fk.elements]}
-                              for fk in table.foreign_key_constraints], key=lambda r: (r['from'], r['table'], r['to']))
-    } for name, table in metadata.tables.items()}
+    from stuntdb.drift import signature
+    return signature(metadata)
 
 
 def generated_config(metadata):
@@ -46,7 +39,7 @@ def generated_config(metadata):
             rules[f'{table.name}.{c.name}'] = action
     return {'version': 1, 'source_env': 'STUNTDB_SOURCE', 'salt_env': 'STUNTDB_SALT',
             'seed': None, 'children': 0, 'max_rows': 10000,
-            'schema': schema_signature(metadata), 'rules': rules}
+            'schema_version': 2, 'schema': schema_signature(metadata), 'rules': rules}
 
 
 def load_config(path: Path):
@@ -73,6 +66,8 @@ def load_config(path: Path):
         raise ValueError('Invalid masking rules')
     if 'schema' in data and not isinstance(data['schema'], dict):
         raise ValueError('Invalid schema baseline')
+    if 'schema_version' in data and (type(data['schema_version']) is not int or data['schema_version'] != 2):
+        raise ValueError('Unsupported schema version')
     if 'detection' in data:
         from stuntdb.detection import validate_detection
         validate_detection(data['detection'])
@@ -83,5 +78,10 @@ def validate_schema(config, metadata):
     known = {f'{t.name}.{c.name}' for t in metadata.tables.values() for c in t.c}
     if set(config.get('rules', {})) - known:
         raise MaskingError('Rule references an unknown column')
-    if 'schema' in config and config['schema'] != schema_signature(metadata):
-        raise MaskingError('Schema changed; regenerate and review the config')
+    if 'schema' in config:
+        from stuntdb.drift import differences, SchemaDriftError
+        if config.get('schema_version') != 2:
+            raise SchemaDriftError(['schema_version: regenerate legacy baseline with init'])
+        paths = differences(config['schema'], schema_signature(metadata))
+        if paths:
+            raise SchemaDriftError(paths)

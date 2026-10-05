@@ -124,7 +124,7 @@ def test_init_config_cli_roundtrip_and_drift(tmp_path):
     before = output.read_text()
     with engine.begin() as c:
         c.exec_driver_sql('ALTER TABLE person ADD COLUMN new_secret VARCHAR(100)')
-    assert runner.invoke(app, args, env=env).exit_code == 1
+    assert runner.invoke(app, args, env=env).exit_code == 3
     assert output.read_text() == before
 
 

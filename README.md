@@ -28,3 +28,5 @@ Snapshots include a value-free manifest. Check an export or restored database wi
 Load an export into an empty matching development schema with `stuntdb load slice.sql --target "$STUNTDB_TARGET"`. See [transactional loading](docs/loading.md) for preflight checks, rollback behavior and limits.
 
 See [MariaDB compatibility](docs/mariadb.md) for server-series limits and JSON reflection differences.
+
+[Schema drift checks](docs/schema-drift.md) now cover defaults, generated expressions, collations, constraints and indexes, with value-free mismatch reports. Legacy schema baselines and database-load manifests require regeneration.

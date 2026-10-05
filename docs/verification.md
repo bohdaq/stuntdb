@@ -1,6 +1,6 @@
 # Export manifests and verification
 
-Every snapshot writes a JSON receipt beside its SQL file (`slice.sql.manifest.json`). Use `--manifest PATH` to choose another path. The receipt includes tool version, dialect, per-table row counts, resolved masking actions, a scoped schema hash, an effective config hash and the SQL SHA-256 checksum. It contains no source URL, salt, seed text or row values. Column/table names are schema information. Hashes are receipts, not signatures or proof of anonymization; keep manifests with their exports.
+Every snapshot writes a JSON receipt beside its SQL file (`slice.sql.manifest.json`). Use `--manifest PATH` to choose another path. The receipt includes tool version, dialect, per-table row counts, resolved masking actions, a versioned scoped schema fingerprint and hash, an effective config hash and the SQL SHA-256 checksum. It contains no source URL, salt, seed text or row values. Column/table names are schema information. Hashes are receipts, not signatures or proof of anonymization; keep manifests with their exports.
 
 ```sh
 stuntdb snapshot --config stuntdb.json --seed orders.id=42 -o slice.sql
@@ -12,7 +12,7 @@ stuntdb verify "$STUNTDB_TARGET" --manifest slice.sql.manifest.json \
 
 File verification streams the checksum and never executes the SQL. A matching file retains the snapshot's original checks; it does not rerun database checks or leak detection. A changed export fails with exit code 3.
 
-Database verification reads a consistent snapshot, compares the dialect, scoped schema hash and exact table counts, then checks every declared foreign key, including composite references and cycles. It expects an otherwise empty matching schema populated by the export; additional rows fail. It does not load SQL or alter either database. Verification currently materializes the target rows in memory. The schema hash covers types, nullability, primary-key membership, computed/spatial markers and foreign keys; indexes, triggers, views and all server-specific DDL are outside this baseline. This is not a byte-for-byte comparison of restored values.
+Database verification reads a consistent snapshot, compares the dialect, scoped schema hash and exact table counts, then checks every declared foreign key, including composite references and cycles. It expects an otherwise empty matching schema populated by the export; additional rows fail. It does not load SQL or alter either database. Verification currently materializes the target rows in memory. The [version-2 schema fingerprint](schema-drift.md) covers column/default/generated details, collations, checks, indexes and declared relationships; triggers, views and all server-specific DDL remain outside it. This is not a byte-for-byte comparison of restored values.
 
 To rerun leak detection, supply a reference source and the original seed and traversal bounds. The checker extracts that source slice and scans all target values for originals from columns the manifest marks as transformed. No salt is needed. An empty seed selection fails. Source changes since export change what this comparison can establish; use a stable reference snapshot. Detection has the same scoped equality/substring/scalar limitations as snapshot masking, and explicitly kept columns are excluded from its source set. It cannot establish absence of arbitrary personal data.
 

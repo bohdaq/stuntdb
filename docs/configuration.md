@@ -9,7 +9,7 @@ stuntdb init "$STUNTDB_SOURCE" -o stuntdb.json
 stuntdb snapshot --config stuntdb.json --seed 'orders.id=123' -o seed.sql
 ```
 
-The config supports `version` (1), `source_env`, `salt_env`, `seed` (one equality seed), `children`, `max_rows`, `schema`, `rules`, and advisory `detection` metadata. Explicit command-line source, seed and traversal/salt settings override their config equivalents. Source defaults to STUNTDB_SOURCE; salt defaults to STUNTDB_SALT. Unknown fields, duplicate keys, unsupported actions and invalid bounds fail before output.
+The config supports `version` (1), `source_env`, `salt_env`, `seed` (one equality seed), `children`, `max_rows`, `schema`, `rules`, `schema_version`, and advisory `detection` metadata. Explicit command-line source, seed and traversal/salt settings override their config equivalents. Source defaults to STUNTDB_SOURCE; salt defaults to STUNTDB_SALT. Unknown fields, duplicate keys, unsupported actions and invalid bounds fail before output.
 
 Rule actions:
 
@@ -26,7 +26,7 @@ An explicit action applies to the entire linked column domain, including columns
 
 Generated configs suggest providers for recognizable email, phone, name and birth-date columns; other sensitive non-text and unsupported columns are marked review, never automatically keep. Changing review to keep is an intentional disclosure decision. The schema-zoo tests use explicit sample-only keep rules for enum/SET and spatial fields; birth dates now use the date provider; those tests do not establish complete anonymization of the datasets.
 
-A generated baseline records column types, nullability, primary-key membership, computed/spatial flags and declared foreign keys. Changes to those fields or added/removed columns/tables fail the snapshot until you regenerate to a new file and review the changes. Defaults, triggers, routines, collations and every index option are not a complete schema fingerprint. Unknown rule column names fail even without a baseline. Handwritten configs may omit the baseline; doing so disables this drift check.
+A generated baseline uses [schema fingerprint version 2](schema-drift.md), including defaults, generated expressions, collations, checks and indexes alongside columns and foreign keys. Intentional source changes require a new config and review. Legacy baselines require regeneration. Handwritten configs may omit the baseline; doing so disables the source drift check. Unknown rule column names still fail.
 
 The leak check remains active for transformed columns and scans kept columns too: copying a transformed source value into an explicitly kept column still fails. Direct scalar values from cleared numeric/date columns are checked in addition to strings. Low-entropy values may cause conservative failures if the same value remains elsewhere. Retained values are not privacy-protected merely because other columns are masked.
 

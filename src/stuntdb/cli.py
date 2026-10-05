@@ -6,6 +6,7 @@ from tempfile import NamedTemporaryFile
 
 import typer
 
+from stuntdb.drift import SchemaDriftError
 from stuntdb.config import generated_config, load_config, validate_schema
 from stuntdb.core import IntegrityError, extract, reflect, sql_export
 from stuntdb.masking import mask_slice, LeakError, MaskingError
@@ -90,6 +91,9 @@ def snapshot(source: str | None = typer.Argument(None), seed: str | None = typer
     except LeakError:
         typer.echo("Leak check failed; no output written.", err=True)
         raise typer.Exit(2)
+    except SchemaDriftError as error:
+        typer.echo('Schema drift: ' + '; '.join(error.paths) + '. Regenerate and review the baseline/export.', err=True)
+        raise typer.Exit(3)
     except MaskingError:
         typer.echo("Masking failed; check salt and unsupported schema types. No output written.", err=True)
         raise typer.Exit(1)
@@ -129,8 +133,10 @@ def verify_command(target: str, manifest: Path = typer.Option(...),
             if not any(original.rows.values()):
                 raise ValueError('Reference seed selected no rows')
             from stuntdb.config import schema_signature
-            if schema_signature(original.metadata) != schema_signature(result.metadata):
-                raise IntegrityError('Reference schema differs')
+            from stuntdb.drift import differences
+            paths = differences(schema_signature(original.metadata), schema_signature(result.metadata))
+            if paths:
+                raise SchemaDriftError(paths)
             columns = [label.rsplit('.', 1) for label, action in receipt['strategies'].items() if action != 'keep']
             check_leaks(original, result, columns)
             typer.echo('Schema, row counts, foreign keys and source-value leak check passed.')
@@ -139,6 +145,9 @@ def verify_command(target: str, manifest: Path = typer.Option(...),
     except LeakError:
         typer.echo('Leak check failed.', err=True)
         raise typer.Exit(2)
+    except SchemaDriftError as error:
+        typer.echo('Schema drift: ' + '; '.join(error.paths) + '. Regenerate and review the baseline/export.', err=True)
+        raise typer.Exit(3)
     except IntegrityError:
         typer.echo('Verification failed: checksum, schema, row counts or foreign keys differ.', err=True)
         raise typer.Exit(3)
@@ -159,6 +168,9 @@ def load_command(export: Path, target: str = typer.Option(...),
         engine = engine_for(target)
         load_export(engine, content, receipt)
         typer.echo('Loaded and verified row counts and foreign keys. Leak detection was not rerun.')
+    except SchemaDriftError as error:
+        typer.echo('Schema drift: ' + '; '.join(error.paths) + '. Regenerate and review the baseline/export.', err=True)
+        raise typer.Exit(3)
     except IntegrityError:
         typer.echo('Load failed: checksum, schema, empty-table or integrity check. Import rolled back.', err=True)
         raise typer.Exit(3)

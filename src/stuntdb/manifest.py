@@ -19,7 +19,7 @@ def digest(value):
 
 def build_manifest(result, sql, dialect, settings):
     dialect = result.metadata.info.get('dialect', dialect)
-    return {'version': 1, 'tool_version': __version__, 'dialect': dialect,
+    return {'version': 2, 'schema': schema_signature(result.metadata), 'tool_version': __version__, 'dialect': dialect,
             'masked': result.masked, 'export_sha256': hashlib.sha256(sql.encode()).hexdigest(),
             'config_sha256': digest(settings), 'schema_sha256': digest(schema_signature(result.metadata)),
             'tables': {name: len(rows) for name, rows in result.rows.items()},
@@ -38,7 +38,7 @@ def load_manifest(path: Path):
     data = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique)
     fields = {'version', 'tool_version', 'dialect', 'masked', 'export_sha256',
               'config_sha256', 'schema_sha256', 'tables', 'strategies'}
-    if not isinstance(data, dict) or set(data) != fields or type(data['version']) is not int or data['version'] != 1:
+    if not isinstance(data, dict) or type(data.get('version')) is not int or data['version'] not in {1, 2} or set(data) != (fields | {'schema'} if data['version'] == 2 else fields):
         raise ValueError('Unsupported manifest')
     if type(data['masked']) is not bool or data['dialect'] not in {'mysql', 'mariadb', 'sqlite'} or not isinstance(data['tool_version'], str):
         raise ValueError('Invalid manifest metadata')
@@ -52,6 +52,8 @@ def load_manifest(path: Path):
         raise ValueError('Invalid manifest strategies')
     if not data['masked'] and any(v != 'keep' for v in data['strategies'].values()):
         raise ValueError('Unmasked manifest has masking rules')
+    if data['version'] == 2 and (not isinstance(data['schema'], dict) or digest(data['schema']) != data['schema_sha256']):
+        raise ValueError('Invalid manifest schema hash')
     return data
 
 
@@ -67,8 +69,7 @@ def verify_file(path, manifest):
 def verify_database(connection, manifest):
     from stuntdb.source import dialect_name
     metadata = reflect(connection)
-    if dialect_name(connection.dialect) != manifest['dialect'] or digest(schema_signature(metadata)) != manifest['schema_sha256']:
-        raise IntegrityError('Target schema differs')
+    check_schema(metadata, manifest, dialect_name(connection.dialect))
     if set(metadata.tables) != set(manifest['tables']):
         raise IntegrityError('Target tables differ')
     expected_columns = {f'{t.name}.{c.name}' for t in metadata.tables.values() if manifest['tables'][t.name] for c in t.c}
@@ -87,3 +88,18 @@ def verify_database(connection, manifest):
     result = Slice(metadata, rows, manifest['masked'], manifest['strategies'])
     verify(result)
     return result
+
+
+def check_schema(metadata, manifest, dialect):
+    from stuntdb.drift import differences, SchemaDriftError
+    if manifest['version'] != 2:
+        raise SchemaDriftError(['schema_version: regenerate legacy export with snapshot'])
+    if digest(manifest['schema']) != manifest['schema_sha256']:
+        raise IntegrityError('Manifest schema hash differs')
+    if set(manifest['schema']) != set(manifest['tables']):
+        raise IntegrityError('Manifest schema tables differ')
+    if dialect != manifest['dialect']:
+        raise SchemaDriftError(['dialect: changed'])
+    paths = differences(manifest['schema'], schema_signature(metadata))
+    if paths:
+        raise SchemaDriftError(paths)
