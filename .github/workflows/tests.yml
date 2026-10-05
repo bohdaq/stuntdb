@@ -28,17 +28,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mysql: ['8.0', '8.4']
+        database: ['mysql:8.0', 'mysql:8.4', 'mariadb:10.11', 'mariadb:11.4']
     services:
       mysql:
-        image: mysql:${{ matrix.mysql }}
+        image: ${{ matrix.database }}
         env:
           MYSQL_ROOT_PASSWORD: test-only-password
           MYSQL_DATABASE: stuntdb_test
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -ptest-only-password"
+          --health-cmd="mariadb-admin ping -h localhost -ptest-only-password || mysqladmin ping -h localhost -ptest-only-password"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=12
@@ -57,18 +57,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mysql: ['8.0', '8.4']
+        database: ['mysql:8.0', 'mysql:8.4', 'mariadb:10.11', 'mariadb:11.4']
         sample: [sakila, employees, frameworks]
     services:
       mysql:
-        image: mysql:${{ matrix.mysql }}
+        image: ${{ matrix.database }}
         env:
           MYSQL_ROOT_PASSWORD: test-only-password
           MYSQL_DATABASE: stuntdb_test
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -ptest-only-password"
+          --health-cmd="mariadb-admin ping -h localhost -ptest-only-password || mysqladmin ping -h localhost -ptest-only-password"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=12

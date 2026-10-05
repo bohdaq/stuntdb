@@ -24,6 +24,22 @@ class Slice:
 def reflect(connection: sa.Connection) -> sa.MetaData:
     metadata = sa.MetaData()
     metadata.reflect(bind=connection)
+    from stuntdb.source import dialect_name
+    metadata.info['dialect'] = dialect_name(connection.dialect)
+    if metadata.info['dialect'] == 'mariadb':
+        import re
+        # MariaDB JSON is LONGTEXT with a JSON_VALID check. Recognize only a
+        # direct whole-column check; arbitrary CHECK expressions remain text.
+        checks = connection.exec_driver_sql(
+            'SELECT TABLE_NAME, CHECK_CLAUSE FROM information_schema.check_constraints '
+            'WHERE constraint_schema=DATABASE()')
+        for table_name, clause in checks:
+            match = re.fullmatch(r'\s*json_valid\(\s*`((?:``|[^`])+)`\s*\)\s*', clause, re.IGNORECASE)
+            if match and table_name in metadata.tables:
+                name = match[1].replace('``', '`')
+                table = metadata.tables[table_name]
+                if name in table.c and table.c[name].type.__class__.__name__ == 'LONGTEXT':
+                    table.c[name].type = sa.JSON()
     if connection.dialect.name == "mysql":
         spatial = connection.execute(sa.text(
             "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns "

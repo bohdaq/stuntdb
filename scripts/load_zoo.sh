@@ -6,6 +6,7 @@ case "${1:-}" in
   *) echo 'Usage: load_zoo.sh sakila|employees' >&2; exit 1 ;;
 esac
 zoo_container="${STUNTDB_MYSQL_CONTAINER:?Set STUNTDB_MYSQL_CONTAINER to the disposable test container}"
+zoo_client=$(docker exec "$zoo_container" sh -c 'command -v mariadb || command -v mysql')
 zoo_temp=$(mktemp -d)
 trap 'rm -rf "$zoo_temp"' EXIT
 if [ "$zoo_sample" = sakila ]; then
@@ -18,7 +19,7 @@ PY
   zoo_directory="$zoo_temp/sakila-db"
   for zoo_file in sakila-schema.sql sakila-data.sql; do
     sed -E 's/(SCHEMA (IF EXISTS )?)sakila/\1stuntdb_test/;s/^USE sakila;/USE stuntdb_test;/;s/sakila\./stuntdb_test./g' "$zoo_directory/$zoo_file" |
-      docker exec -i "$zoo_container" mysql -uroot -ptest-only-password
+      docker exec -i "$zoo_container" "$zoo_client" -uroot -ptest-only-password
   done
 else
   git clone --quiet https://github.com/datacharmer/test_db.git "$zoo_temp/employees"
@@ -28,5 +29,5 @@ else
   # SOURCE paths in upstream SQL are relative to the mysql client's working dir.
   docker exec "$zoo_container" mkdir -p /tmp/stuntdb-employees
   docker cp "$zoo_directory/." "$zoo_container:/tmp/stuntdb-employees"
-  docker exec -i -w /tmp/stuntdb-employees "$zoo_container" mysql -uroot -ptest-only-password < "$zoo_directory/stuntdb-load.sql"
+  docker exec -i -w /tmp/stuntdb-employees "$zoo_container" "$zoo_client" -uroot -ptest-only-password < "$zoo_directory/stuntdb-load.sql"
 fi

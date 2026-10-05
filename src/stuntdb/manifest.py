@@ -18,6 +18,7 @@ def digest(value):
 
 
 def build_manifest(result, sql, dialect, settings):
+    dialect = result.metadata.info.get('dialect', dialect)
     return {'version': 1, 'tool_version': __version__, 'dialect': dialect,
             'masked': result.masked, 'export_sha256': hashlib.sha256(sql.encode()).hexdigest(),
             'config_sha256': digest(settings), 'schema_sha256': digest(schema_signature(result.metadata)),
@@ -39,7 +40,7 @@ def load_manifest(path: Path):
               'config_sha256', 'schema_sha256', 'tables', 'strategies'}
     if not isinstance(data, dict) or set(data) != fields or type(data['version']) is not int or data['version'] != 1:
         raise ValueError('Unsupported manifest')
-    if type(data['masked']) is not bool or data['dialect'] not in {'mysql', 'sqlite'} or not isinstance(data['tool_version'], str):
+    if type(data['masked']) is not bool or data['dialect'] not in {'mysql', 'mariadb', 'sqlite'} or not isinstance(data['tool_version'], str):
         raise ValueError('Invalid manifest metadata')
     for key in ('export_sha256', 'config_sha256', 'schema_sha256'):
         value = data[key]
@@ -64,8 +65,9 @@ def verify_file(path, manifest):
 
 
 def verify_database(connection, manifest):
+    from stuntdb.source import dialect_name
     metadata = reflect(connection)
-    if connection.dialect.name != manifest['dialect'] or digest(schema_signature(metadata)) != manifest['schema_sha256']:
+    if dialect_name(connection.dialect) != manifest['dialect'] or digest(schema_signature(metadata)) != manifest['schema_sha256']:
         raise IntegrityError('Target schema differs')
     if set(metadata.tables) != set(manifest['tables']):
         raise IntegrityError('Target tables differ')

@@ -2,7 +2,7 @@
 
 Cycle-safe database slices for development. Apache-2.0 licensed.
 
-This is pre-release software with an initial conservative masking implementation. MySQL 8 is the initial target; MariaDB is scheduled for v0.3. SQLite is available for local development and tests.
+This is pre-release software with an initial conservative masking implementation. MySQL 8.0/8.4 and MariaDB 10.11/11.4 are supported. SQLite is available for local development and tests.
 
 ```sh
 # Set STUNTDB_SALT to a stable project secret before snapshots.
@@ -17,7 +17,7 @@ pytest
 
 **Masking is now the default.** Provide a secret through `STUNTDB_SALT`. Strings receive deterministic tokens, linked columns share domains, and text/JSON/binary fields are cleared. Unsupported sensitive types fail closed. Leak and integrity checks run before output. Explicit `--allow-unmasked` exports original data. Use `stuntdb init`, [reviewed config rules](docs/configuration.md), and [format-preserving providers](docs/providers.md) for supported personal-data fields. Read the [masking scope and limits](docs/masking.md) before using it with real data.
 
-Current limits: selected tables require primary keys; equality seeds only; no schema creation, direct target loading, sample-based PII detection, manifest, or standalone verification. JSON, binary and UTF-8 strings are exported with SQL-mode-independent hex literals; this encoding is reversible; privacy comes from masking, not SQL encoding. Other literal support depends on column types; unsupported values fail before export. The extraction foundation passes MySQL 8.0/8.4 integration CI; the schema zoo covers full Sakila and Employees imports plus synthetic framework shapes. Application-only links, triggers, routines and views are outside the round-trip target. See [testing](docs/testing.md).
+Current limits: selected tables require primary keys; equality seeds only; no schema creation or arbitrary SQL predicates. Target loading, bounded format suggestions, manifests and standalone verification are available. JSON, binary and UTF-8 strings are exported with SQL-mode-independent hex literals; this encoding is reversible; privacy comes from masking, not SQL encoding. Other literal support depends on column types; unsupported values fail before export. The extraction foundation has MySQL 8.0/8.4 and MariaDB 10.11/11.4 integration coverage; the schema zoo covers full Sakila and Employees imports plus synthetic framework shapes. Application-only links, triggers, routines and views are outside the round-trip target. See [testing](docs/testing.md).
 
 See [roadmap](docs/roadmap.md) and [security reporting](SECURITY.md).
 
@@ -26,3 +26,5 @@ Snapshots include a value-free manifest. Check an export or restored database wi
 `stuntdb init` also offers [bounded local format detection](docs/detection.md), recording value-free suggestions and requiring review for uncertain findings. Use `--sample-rows 0` for schema-only initialization.
 
 Load an export into an empty matching development schema with `stuntdb load slice.sql --target "$STUNTDB_TARGET"`. See [transactional loading](docs/loading.md) for preflight checks, rollback behavior and limits.
+
+See [MariaDB compatibility](docs/mariadb.md) for server-series limits and JSON reflection differences.

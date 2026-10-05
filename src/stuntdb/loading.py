@@ -60,7 +60,7 @@ def parse_export(content, manifest):
     lines = content.decode('utf-8').splitlines()
     status = 'MASKED' if manifest['masked'] else 'UNMASKED'
     header = f'-- stuntdb: {status} development data; requires an existing schema'
-    mysql = manifest['dialect'] == 'mysql'
+    mysql = manifest['dialect'] in {'mysql', 'mariadb'}
     prefix = [header] + (["SET @stuntdb_old_fk_checks = @@FOREIGN_KEY_CHECKS;",
                         "SET FOREIGN_KEY_CHECKS = 0;", "START TRANSACTION;"] if mysql else
                        ["PRAGMA foreign_keys = OFF;", "BEGIN TRANSACTION;"])
@@ -88,7 +88,7 @@ def parse_export(content, manifest):
 def load_export(engine, content, manifest):
     statements = parse_export(content, manifest)  # Validate bytes before connecting.
     mysql = engine.dialect.name == 'mysql'
-    if engine.dialect.name != manifest['dialect']:
+    if mysql != (manifest['dialect'] in {'mysql', 'mariadb'}):
         raise IntegrityError('Target dialect differs')
     if mysql:
         engine = engine.execution_options(isolation_level='SERIALIZABLE')
@@ -97,8 +97,9 @@ def load_export(engine, content, manifest):
         try:
             if mysql:
                 version = connection.exec_driver_sql('SELECT VERSION()').scalar_one()
-                if 'mariadb' in version.lower() or version.split('.')[0] != '8':
-                    raise ValueError('MySQL 8 required')
+                from stuntdb.source import validate_server
+                if validate_server(version) != manifest['dialect']:
+                    raise IntegrityError('Target server family differs')
                 bad = connection.exec_driver_sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE' AND engine <> 'InnoDB'").scalar_one()
                 triggers = connection.exec_driver_sql('SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=DATABASE()').scalar_one()
                 if bad or triggers:

@@ -262,3 +262,56 @@ def test_mysql_transactional_loader(mysql_engine, tmp_path):
     with mysql_engine.connect() as c:
         assert c.exec_driver_sql('SELECT id, b_id, derived FROM a').one() == (1, 2, 2)
         assert c.exec_driver_sql('SELECT @@FOREIGN_KEY_CHECKS').scalar_one() == 1
+
+
+def test_json_spatial_generated_loader_roundtrip(mysql_engine, tmp_path):
+    import json
+    from stuntdb.core import reflect
+    from stuntdb.literals import JSONDocument
+    from stuntdb.manifest import build_manifest, verify_database
+    from stuntdb.loading import load_export
+    from stuntdb.masking import mask_slice
+    from stuntdb.source import dialect_name
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('DROP TABLE IF EXISTS server_types')
+        c.exec_driver_sql('CREATE TABLE server_types (id INT PRIMARY KEY, payload JSON NOT NULL, location POINT, derived INT GENERATED ALWAYS AS (id + 1) STORED) ENGINE=InnoDB')
+        c.exec_driver_sql("INSERT INTO server_types (id, payload, location) VALUES (1, 'null', ST_GeomFromText('POINT(1 2)', 4326))")
+        c.exec_driver_sql("INSERT INTO server_types (id, payload) VALUES (2, '{\"canary\":\"secret\"}')")
+    try:
+        with consistent_source(mysql_engine) as c:
+            metadata = reflect(c)
+            assert isinstance(metadata.tables['server_types'].c.payload.type, sa.JSON)
+            result = extract(c, 'server_types', 'id', '1')
+            assert result.rows['server_types'][0]['payload'] == JSONDocument('null')
+            assert metadata.tables['server_types'].c.derived.computed is not None
+            raw_location = result.rows['server_types'][0]['location']
+        script = sql_export(result, mysql_engine.dialect)
+        receipt = build_manifest(result, script, mysql_engine.dialect.name, {})
+        assert receipt['dialect'] == dialect_name(mysql_engine.dialect)
+        wrong_family = dict(receipt, dialect='mysql' if receipt['dialect'] == 'mariadb' else 'mariadb')
+        from stuntdb.core import IntegrityError
+        with pytest.raises(IntegrityError):
+            load_export(mysql_engine, script.encode(), wrong_family)
+        with mysql_engine.begin() as c:
+            c.exec_driver_sql('SET FOREIGN_KEY_CHECKS=0')
+            for table in result.metadata.tables.values():
+                c.execute(table.delete())
+            c.exec_driver_sql('SET FOREIGN_KEY_CHECKS=1')
+        load_export(mysql_engine, script.encode(), receipt)
+        with consistent_source(mysql_engine) as c:
+            restored = verify_database(c, receipt)
+            row = restored.rows['server_types'][0]
+            assert row['payload'] == JSONDocument('null')
+            assert row['location'] == raw_location
+            assert row['derived'] == 2
+        with mysql_engine.begin() as c:
+            c.exec_driver_sql('CREATE TABLE server_json (id INT PRIMARY KEY, payload JSON NOT NULL) ENGINE=InnoDB')
+            c.exec_driver_sql("INSERT INTO server_json VALUES (1, '{\"canary\":\"secret\"}')")
+        with consistent_source(mysql_engine) as c:
+            subset = extract(c, 'server_json', 'id', '1')
+            masked = mask_slice(subset, 'test-only-project-salt-1234567890')
+            assert masked.rows['server_json'][0]['payload'] == JSONDocument('null')
+    finally:
+        with mysql_engine.begin() as c:
+            c.exec_driver_sql('DROP TABLE IF EXISTS server_json')
+            c.exec_driver_sql('DROP TABLE server_types')

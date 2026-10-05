@@ -1,6 +1,6 @@
 # Schema zoo
 
-The matrix runs on MySQL 8.0 and 8.4 using only the disposable `stuntdb_test` database. Each sample is loaded afresh in a separate CI job. Tests extract a slice, rebuild an empty base-table schema from `SHOW CREATE TABLE` (without triggers, routines or views), restore the SQL, compare every row and run independent foreign-key anti-join checks. Sakila and Employees are restored both unmasked and with reviewed sample-only masking rules.
+The matrix runs on MySQL 8.0/8.4 and MariaDB 10.11/11.4 using only the disposable `stuntdb_test` database. Each sample is loaded afresh in a separate CI job. Tests extract a slice, rebuild an empty base-table schema from `SHOW CREATE TABLE` (without triggers, routines or views), restore the SQL, compare every row and run independent foreign-key anti-join checks. Sakila and Employees are restored both unmasked and with reviewed sample-only masking rules.
 
 | Case | Source | Coverage |
 | --- | --- | --- |
