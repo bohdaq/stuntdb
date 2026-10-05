@@ -49,6 +49,7 @@ def reflect(connection: sa.Connection) -> sa.MetaData:
         for table_name, column_name in spatial:
             if table_name in metadata.tables:
                 metadata.tables[table_name].c[column_name].info["mysql_spatial"] = True
+                metadata.tables[table_name].c[column_name].info['mysql_axis_order'] = metadata.info['dialect'] == 'mysql'
     return metadata
 
 

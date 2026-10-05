@@ -15,7 +15,7 @@ LITERAL = re.compile(
     r"'[0-9:+ .-]+'|X'[0-9a-fA-F]*'|"
     r"CONVERT\(X'[0-9a-fA-F]*' USING utf8mb4\)|"
     r"CAST\(X'[0-9a-fA-F]*' AS TEXT\)|"
-    r"ST_GeomFromWKB\(X'[0-9a-fA-F]*', [0-9]+\))")
+    r"ST_GeomFromWKB\(X'[0-9a-fA-F]*', [0-9]+(?:, 'axis-order=long-lat')?\))")
 
 
 def _parts(text):

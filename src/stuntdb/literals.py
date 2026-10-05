@@ -37,7 +37,10 @@ def export_value(column, value, mysql: bool):
         if not isinstance(value, bytes) or len(value) < 5:
             raise ValueError("Unsupported spatial value")
         srid = int.from_bytes(value[:4], "little")
-        return sa.literal_column(f"ST_GeomFromWKB(X'{value[4:].hex()}', {srid})")
+        # MySQL's internal geographic WKB is always longitude/latitude,
+        # whereas parsing defaults to the SRS's (possibly reversed) axis order.
+        options = ", 'axis-order=long-lat'" if column.info.get('mysql_axis_order') else ''
+        return sa.literal_column(f"ST_GeomFromWKB(X'{value[4:].hex()}', {srid}{options})")
     if isinstance(value, (bytes, bytearray, memoryview)):
         return sa.literal_column("X'" + bytes(value).hex() + "'")
     if isinstance(value, str):
