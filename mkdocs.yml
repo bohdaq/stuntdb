@@ -1,0 +1,24 @@
+site_name: stuntdb
+site_description: Cycle-safe masked database slices for development
+site_url: https://bohdaq.github.io/stuntdb/
+repo_url: https://github.com/bohdaq/stuntdb
+edit_uri: edit/main/docs/
+theme:
+  name: readthedocs
+nav:
+  - Home: index.md
+  - Quick start: quickstart.md
+  - Configuration: configuration.md
+  - Detection: detection.md
+  - Masking: masking.md
+  - Providers: providers.md
+  - Loading: loading.md
+  - Verification: verification.md
+  - Schema drift: schema-drift.md
+  - MariaDB: mariadb.md
+  - Testing: testing.md
+  - Release notes: release-notes.md
+  - Outside-user validation: outside-user-validation.md
+  - Release checklist: releasing.md
+  - Security: security.md
+  - Roadmap: roadmap.md

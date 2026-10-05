@@ -4,14 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stuntdb"
-version = "0.1.0a1"
+version = "0.3.0a1"
 description = "Cycle-safe database subsets for development"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 dependencies = ["SQLAlchemy>=2.0,<3", "PyMySQL[rsa]>=1.1,<2", "typer>=0.12,<1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "hypothesis>=6,<7"]
+release = ["build>=1.2,<2", "twine>=6,<7"]
+docs = ["mkdocs>=1.6,<2"]
 
 [project.scripts]
 stuntdb = "stuntdb.cli:app"
@@ -23,3 +26,8 @@ where = ["src"]
 testpaths = ["tests"]
 markers = ["mysql: integration tests requiring a disposable MySQL 8 database",
            "zoo: full sample databases and framework-shaped fixtures"]
+
+[project.urls]
+Repository = "https://github.com/bohdaq/stuntdb"
+Documentation = "https://bohdaq.github.io/stuntdb/"
+Issues = "https://github.com/bohdaq/stuntdb/issues"

@@ -6,3 +6,5 @@ dist/
 build/
 .github-repository.png
 .hypothesis/
+
+site/

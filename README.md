@@ -1,17 +1,17 @@
 # stuntdb
 
-Cycle-safe database slices for development. Apache-2.0 licensed.
+Cycle-safe database slices for development. Apache-2.0 licensed. [Documentation](https://bohdaq.github.io/stuntdb/).
 
-This is pre-release software with an initial conservative masking implementation. MySQL 8.0/8.4 and MariaDB 10.11/11.4 are supported. SQLite is available for local development and tests.
+This is the v0.3.0a1 alpha checkpoint with conservative masking. MySQL 8.0/8.4 and MariaDB 10.11/11.4 are supported. SQLite is available for local development and tests.
 
 ```sh
-# Set STUNTDB_SALT to a stable project secret before snapshots.
-python -m pip install -e '.[dev]'
-stuntdb inspect 'mysql+pymysql://user:password@localhost/database'
-stuntdb snapshot 'mysql+pymysql://user:password@localhost/database' \
-  --seed 'orders.id=123' --children 1 -o seed.sql
-pytest
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install .
+python examples/quickstart.py
 ```
+
+The synthetic demo needs no database server and verifies four masked rows with cyclic references. See the [quick start](docs/quickstart.md), [release notes](docs/release-notes.md), and [release checklist](docs/releasing.md). Outside-user validation remains [pending](docs/outside-user-validation.md).
 
 `inspect` reports declared relationship cycles without reading row values. Snapshots follow every declared parent reference to a fixed point, including cycles, self-references and composite keys. Use `--children N` to follow declared dependents N levels from the seed (default 0). Rows added only to satisfy parent references do not expand into unrelated children. A global row ceiling stops oversized slices. Traversal keys use a private temporary SQLite store that is removed after each run; selected rows and the export still reside in memory. Integrity is checked before an atomic SQL export. MySQL reads use a read-only consistent snapshot and reject non-InnoDB tables and unsupported server versions; use a read-only account. Concurrent schema changes during extraction are unsupported. Exports contain inserts for an existing matching schema and temporarily disable foreign-key checks to load cycles. Use an empty development database; disabling checks does not validate existing target rows.
 
