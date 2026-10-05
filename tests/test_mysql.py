@@ -185,3 +185,41 @@ def test_mysql_reviewed_config_cli(mysql_engine, tmp_path):
     assert 'canary@example.invalid'.encode().hex() not in output.read_text()
     with mysql_engine.begin() as c:
         c.exec_driver_sql('DROP TABLE reviewed_person')
+
+
+def test_mysql_provider_roundtrip(mysql_engine):
+    from datetime import date
+    from decimal import Decimal
+    from stuntdb.masking import mask_slice
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('DROP TABLE IF EXISTS provider_order')
+        c.exec_driver_sql('DROP TABLE IF EXISTS provider_person')
+        c.exec_driver_sql('CREATE TABLE provider_person (email VARCHAR(100) PRIMARY KEY, name VARCHAR(100), phone VARCHAR(30), birth_date DATE, ssn INT, amount DECIMAL(8,2)) ENGINE=InnoDB')
+        c.exec_driver_sql('CREATE TABLE provider_order (id INT PRIMARY KEY, email VARCHAR(100), FOREIGN KEY(email) REFERENCES provider_person(email)) ENGINE=InnoDB')
+        c.exec_driver_sql("INSERT INTO provider_person VALUES ('canary@example.org','Source Canary Person','+48 (123) 456-789','1960-02-29',123456789,-123.45)")
+        c.exec_driver_sql("INSERT INTO provider_order VALUES (1,'canary@example.org')")
+    rules = {'provider_person.email': 'email', 'provider_person.name': 'name',
+             'provider_person.phone': 'phone', 'provider_person.birth_date': 'date',
+             'provider_person.ssn': 'integer', 'provider_person.amount': 'number'}
+    with consistent_source(mysql_engine) as c:
+        original = extract(c, 'provider_order', 'id', '1')
+        masked = mask_slice(original, 'test-only-project-salt-1234567890', rules)
+    with mysql_engine.connect() as c:
+        c.exec_driver_sql('DELETE FROM provider_order')
+        c.exec_driver_sql('DELETE FROM provider_person')
+        c.commit()
+        with c.connection.driver_connection.cursor() as cursor:
+            for line in sql_export(masked, mysql_engine.dialect).splitlines():
+                if not line.startswith('--'):
+                    cursor.execute(line)
+        row = c.exec_driver_sql('SELECT email, name, phone, birth_date, ssn, amount FROM provider_person').one()
+        assert row[0].endswith('@example.invalid')
+        assert row[1] != 'Source Canary Person'
+        assert row[2] != '+48 (123) 456-789'
+        assert row[3] != date(1960, 2, 29)
+        assert row[4] != 123456789
+        assert row[5] != Decimal('-123.45') and row[5].as_tuple().exponent == -2
+        assert c.exec_driver_sql('SELECT COUNT(*) FROM provider_order JOIN provider_person USING(email)').scalar_one() == 1
+        assert c.exec_driver_sql('SELECT @@FOREIGN_KEY_CHECKS').scalar_one() == 1
+        c.exec_driver_sql('DROP TABLE provider_order')
+        c.exec_driver_sql('DROP TABLE provider_person')

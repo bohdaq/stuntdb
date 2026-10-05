@@ -8,7 +8,7 @@ The matrix runs on MySQL 8.0 and 8.4 using only the disposable `stuntdb_test` da
 | Employees | Full datacharmer/test_db at e324b56193ca506ab7cc1ab143a9153d8c4535d7 | 300k+ source employees, salary/title children, composite keys, departments, dates and ENUM |
 | Frameworks | Original synthetic DDL in frameworks.sql | Django-shaped membership and self-reference, generic relation boundary, WordPress-shaped unconstrained links |
 
-Configured sample masking explicitly retains unsupported enum/SET, spatial and birth-date fields; it is partial masking, not full anonymization.
+Configured sample masking explicitly retains unsupported enum/SET and spatial fields; birth dates now use a date provider; it is partial masking, not full anonymization.
 
 The framework fixture is not a Django or WordPress installation. It explicitly asserts that Django generic object IDs and WordPress application-only relationships are **not followed**. Declared relationships are scheduled for v0.3; no application-level completeness claim is made for these links.
 

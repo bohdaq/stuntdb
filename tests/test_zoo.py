@@ -85,7 +85,7 @@ def test_sample_database(zoo_engine):
             assert result.rows["salaries"] and result.rows["titles"] and result.rows["departments"]
             assert len(result.rows["employees"]) == 1
     # These are explicit sample-test decisions, not suggested production rules.
-    # Enum/SET/spatial and birth dates are retained, so this is not a fully
+    # Enum/SET/spatial fields are retained, so this is not a fully
     # anonymized dataset. The test proves configured masking and restoration.
     settings = generated_config(result.metadata)
     reviewed = {name: ('keep' if action == 'review' else action)
@@ -96,6 +96,11 @@ def test_sample_database(zoo_engine):
     assert masked.masked
     changed = 'customer' if sample == 'sakila' else 'employees'
     assert masked.rows[changed] != result.rows[changed]
+    if sample == 'employees':
+        assert reviewed['employees.birth_date'] == 'date'
+        assert masked.rows['employees'][0]['birth_date'] != result.rows['employees'][0]['birth_date']
+    else:
+        assert '@example.invalid' in masked.rows['customer'][0]['email']
     roundtrip(zoo_engine, result)
     roundtrip(zoo_engine, masked)
 

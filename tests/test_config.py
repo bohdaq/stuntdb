@@ -23,8 +23,8 @@ def metadata():
 def test_generated_config_marks_review_and_has_no_secrets():
     config = generated_config(metadata())
     assert config['rules']['person.gender'] == 'review'
-    assert config['rules']['person.birth_date'] == 'review'
-    assert config['rules']['person.email'] == 'auto'
+    assert config['rules']['person.birth_date'] == 'date'
+    assert config['rules']['person.email'] == 'email'
     assert config['source_env'] == 'STUNTDB_SOURCE'
     assert config['salt_env'] == 'STUNTDB_SALT'
 

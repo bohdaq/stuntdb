@@ -3,8 +3,9 @@ import json
 from pathlib import Path
 
 from stuntdb.masking import MaskingError
+from stuntdb.providers import PROVIDERS
 
-ACTIONS = {'auto', 'review', 'keep', 'clear', 'token'}
+ACTIONS = {'auto', 'review', 'keep', 'clear', 'token'} | PROVIDERS
 FIELDS = {'version', 'source_env', 'salt_env', 'seed', 'children', 'max_rows', 'schema', 'rules'}
 
 
@@ -30,7 +31,19 @@ def generated_config(metadata):
             supported = isinstance(c.type, (sa.String, sa.JSON, sa.LargeBinary, sa.Integer, sa.Numeric, sa.Float, sa.Boolean, sa.Date, sa.DateTime, sa.Time)) or c.type.__class__.__name__ in {'YEAR', 'BIT'}
             unsupported |= not supported
             unsupported |= bool(PRIVATE_NAME.search(c.name)) and not isinstance(c.type, (sa.String, sa.JSON, sa.LargeBinary))
-            rules[f'{table.name}.{c.name}'] = 'review' if unsupported else 'auto'
+            action = 'review' if unsupported else 'auto'
+            label = c.name.lower()
+            ordinary_string = isinstance(c.type, sa.String) and not isinstance(c.type, sa.Enum) and not hasattr(c.type, 'values')
+            if not c.computed and not c.info.get('mysql_spatial'):
+                if ordinary_string and 'email' in label:
+                    action = 'email'
+                elif ordinary_string and any(part in label for part in ('phone', 'mobile')):
+                    action = 'phone'
+                elif ordinary_string and label in {'name', 'first_name', 'last_name', 'full_name', 'given_name', 'family_name'}:
+                    action = 'name'
+                elif isinstance(c.type, sa.Date) and not isinstance(c.type, sa.DateTime) and any(part in label for part in ('birth', 'dob')):
+                    action = 'date'
+            rules[f'{table.name}.{c.name}'] = action
     return {'version': 1, 'source_env': 'STUNTDB_SOURCE', 'salt_env': 'STUNTDB_SALT',
             'seed': None, 'children': 0, 'max_rows': 10000,
             'schema': schema_signature(metadata), 'rules': rules}

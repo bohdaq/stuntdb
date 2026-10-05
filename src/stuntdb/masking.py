@@ -11,6 +11,7 @@ import sqlalchemy as sa
 
 from stuntdb.core import Slice, verify
 from stuntdb.literals import JSONDocument
+from stuntdb.providers import PROVIDERS, provide, validate_provider
 
 
 class MaskingError(ValueError):
@@ -95,9 +96,10 @@ def mask_slice(original: Slice, salt: str, rules: dict[str, str] | None = None) 
     metadata = original.metadata
     rules = rules or {}
     known = {f'{t.name}.{c.name}' for t in metadata.tables.values() for c in t.c}
-    if set(rules) - known or any(v not in {'auto', 'review', 'keep', 'clear', 'token'} for v in rules.values()):
+    if set(rules) - known or any(v not in ({'auto', 'review', 'keep', 'clear', 'token'} | PROVIDERS) for v in rules.values()):
         raise MaskingError("Unknown column or rule")
     policies = {}
+    domain_columns = {}
     groups = domains(metadata)
     key_columns = {c for t in metadata.tables.values() for c in t.primary_key}
     key_columns.update(e.parent for t in metadata.tables.values()
@@ -117,6 +119,11 @@ def mask_slice(original: Slice, salt: str, rules: dict[str, str] | None = None) 
         if strategy is not None:
             if any(c.computed is not None for c in group):
                 raise MaskingError("Computed-column masking is not supported")
+            if strategy in PROVIDERS:
+                try:
+                    validate_provider(strategy, group)
+                except ValueError as error:
+                    raise MaskingError('Provider does not fit column types') from error
             if strategy == 'token' and any(not isinstance(c.type, sa.String) or isinstance(c.type, sa.Enum) or hasattr(c.type, 'values') for c in group):
                 raise MaskingError("Token rules require ordinary string columns")
             if strategy == 'clear':
@@ -148,9 +155,10 @@ def mask_slice(original: Slice, salt: str, rules: dict[str, str] | None = None) 
             else:
                 raise MaskingError("Unknown column types require reviewed masking rules")
         label = min(f"{c.table.name}.{c.name}" for c in group)
-        length = min([c.type.length for c in group if getattr(c.type, 'length', None)] or [32])
+        domain_columns[label] = group
+        length = min([c.type.length for c in group if getattr(c.type, 'length', None)] or [128])
         for c in group:
-            policies[c] = (strategy, label, min(length, 32))
+            policies[c] = (strategy, label, min(length, 32) if strategy == "token" else length)
     rows = {name: [] for name in original.rows}
     masked_columns = set()
     mappings = {}
@@ -177,13 +185,19 @@ def mask_slice(original: Slice, salt: str, rules: dict[str, str] | None = None) 
                     else:
                         replacement = ''
                 else:
-                    if not isinstance(value, str):
+                    if strategy == 'token' and not isinstance(value, str):
                         raise MaskingError("Unsupported string value")
                     identity = (domain, value)
                     replacement = mappings.get(identity)
                     if replacement is None:
-                        payload = json.dumps([domain, value], ensure_ascii=False, separators=(',', ':')).encode()
-                        replacement = hmac.new(salt.encode(), payload, hashlib.sha256).hexdigest()[:length]
+                        if strategy in PROVIDERS:
+                            try:
+                                replacement = provide(strategy, value, salt, domain, domain_columns[domain], length)
+                            except ValueError as error:
+                                raise MaskingError('Unsupported provider input or column bounds') from error
+                        else:
+                            payload = json.dumps([domain, value], ensure_ascii=False, separators=(',', ':')).encode()
+                            replacement = hmac.new(salt.encode(), payload, hashlib.sha256).hexdigest()[:length]
                         if replacement in outputs[domain] and outputs[domain][replacement] != value:
                             raise MaskingError("Mask collision; increase column width or review rules")
                         outputs[domain][replacement] = value
