@@ -1,6 +1,6 @@
 """Fixed-point parent closure; source rows are never modified."""
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import sqlalchemy as sa
@@ -18,6 +18,7 @@ class Slice:
     metadata: sa.MetaData
     rows: dict[str, list[dict[str, Any]]]
     masked: bool = False
+    strategies: dict[str, str] = field(default_factory=dict)
 
 
 def reflect(connection: sa.Connection) -> sa.MetaData:

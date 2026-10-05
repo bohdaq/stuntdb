@@ -204,7 +204,8 @@ def mask_slice(original: Slice, salt: str, rules: dict[str, str] | None = None) 
                         mappings[identity] = replacement
                 result[c.name] = replacement
             rows[name].append(result)
-    masked = Slice(metadata, rows, masked=True)
+    masked = Slice(metadata, rows, masked=True, strategies={
+        f'{c.table.name}.{c.name}': policy[0] for c, policy in policies.items()})
     # Clearing unique fields may produce collisions; never silently emit them.
     for name, records in rows.items():
         table = metadata.tables[name]

@@ -104,7 +104,7 @@ def test_cli_atomic_failure_and_success(tmp_path):
     assert output.read_text() == "existing output"
     assert runner.invoke(app, args).exit_code == 0
     assert "INSERT INTO node" in output.read_text()
-    assert len(list(tmp_path.iterdir())) == 2
+    assert len(list(tmp_path.iterdir())) == 3
 
 
 @pytest.fixture()

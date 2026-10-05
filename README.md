@@ -20,3 +20,5 @@ pytest
 Current limits: selected tables require primary keys; equality seeds only; no schema creation, direct target loading, sample-based PII detection, manifest, or standalone verification. JSON, binary and UTF-8 strings are exported with SQL-mode-independent hex literals; this encoding is reversible; privacy comes from masking, not SQL encoding. Other literal support depends on column types; unsupported values fail before export. The extraction foundation passes MySQL 8.0/8.4 integration CI; the schema zoo covers full Sakila and Employees imports plus synthetic framework shapes. Application-only links, triggers, routines and views are outside the round-trip target. See [testing](docs/testing.md).
 
 See [roadmap](docs/roadmap.md) and [security reporting](SECURITY.md).
+
+Snapshots include a value-free manifest. Check an export or restored database with `stuntdb verify TARGET --manifest slice.sql.manifest.json`; see [verification scope and source-value checks](docs/verification.md).

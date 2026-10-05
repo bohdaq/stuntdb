@@ -28,8 +28,10 @@ def zoo_engine():
 
 
 def roundtrip(engine, result):
+    from stuntdb.manifest import build_manifest, verify_database
     verify(result)
     script = sql_export(result, engine.dialect)
+    manifest = build_manifest(result, script, engine.dialect.name, {})
     # Save base-table DDL, then rebuild the disposable schema without triggers or views.
     # This models the documented empty, matching target schema requirement.
     with engine.connect() as c:
@@ -48,6 +50,7 @@ def roundtrip(engine, result):
                 if not line.startswith("--"):
                     cursor.execute(line)
         # Compare every restored row, including non-key types and empty tables.
+        verify_database(c, manifest)
         for name, expected in result.rows.items():
             table = result.metadata.tables[name]
             actual = [dict(r) for r in c.execute(select_rows(table)).mappings()]
