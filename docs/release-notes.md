@@ -1,6 +1,6 @@
-# v0.3.0a1 release notes
+# v0.3.0 release notes
 
-This alpha checkpoint packages the existing extract → mask → load → verify workflow. No stable release, PyPI publication or outside-user validation is claimed.
+Version 0.3.0 packages the extract → mask → load → verify workflow. Independent outside-user validation was waived by the owner and has not been performed. PyPI publication is tracked separately from the GitHub release.
 
 ## Available
 
@@ -22,10 +22,10 @@ Manifests now use `version: 2` with a hashed-expression schema fingerprint. Lega
 
 `init` samples by default (up to 100 rows per eligible table within global limits). Use `--sample-rows 0` for schema-only behavior. Uncertain findings become `review` and can block snapshots until resolved.
 
-## Limits and remaining release work
+## Limits
 
 Selected tables require primary keys. Seeds are single equality selections. Target schemas must already exist, match and be empty; trigger-bearing targets are rejected. All server base tables require InnoDB. No arbitrary SQL import or cross-family MySQL/MariaDB migration is supported. Concurrent DDL is unsupported.
 
 Masking preserves storage formats, not application semantics; explicit kept values remain disclosed. Detector confidence is not calibrated. Free text and application-only links need review. Exports and restored rows still reside in memory. Schema protection is scoped rather than a complete DDL equivalence check.
 
-Outside-user validation and a configured private vulnerability reporting channel remain required before a stable public release. See [validation](outside-user-validation.md), [security](security.md) and the [release checklist](releasing.md).
+Private vulnerability reporting is enabled. The owner explicitly waived the independent validation gate for this release on 2026-10-05. See [validation](outside-user-validation.md), [security](security.md) and the [release checklist](releasing.md).

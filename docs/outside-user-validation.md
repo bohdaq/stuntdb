@@ -1,6 +1,6 @@
 # Outside-user validation
 
-**Status: pending.** Automated tests and the demo are not a substitute for an independent person using stuntdb. No external tester has been contacted or result recorded by this work.
+**Status: waived for v0.3.0 by the owner on 2026-10-05.** Automated tests and the demo are not a substitute for an independent person using stuntdb. No external tester has been contacted or result recorded by this work. Issue #2 is excluded from the release gate at the owner’s request; the checklist below remains available for future validation.
 
 Ask a volunteer unfamiliar with the repository to follow the quick start from a clean environment. Use synthetic or approved disposable fixtures only. Do not send real database dumps, credentials or personal data in feedback.
 

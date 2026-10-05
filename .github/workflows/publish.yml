@@ -1,0 +1,48 @@
+name: Publish to PyPI
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag
+        required: true
+        default: v0.3.0
+permissions:
+  contents: read
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download released artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern '*.whl' --pattern '*.tar.gz' --pattern SHA256SUMS
+      - name: Verify checksums and artifact selection
+        working-directory: dist
+        run: |
+          sha256sum --check SHA256SUMS
+          python - <<'PY'
+          from pathlib import Path
+          assert len(list(Path('.').glob('*.whl'))) == 1
+          assert len(list(Path('.').glob('*.tar.gz'))) == 1
+          Path('SHA256SUMS').unlink()
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/
+  publish:
+    needs: download
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/stuntdb/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

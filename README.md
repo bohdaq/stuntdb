@@ -2,7 +2,7 @@
 
 Cycle-safe database slices for development. Apache-2.0 licensed. [Documentation](https://bohdaq.github.io/stuntdb/).
 
-This is the v0.3.0a1 alpha checkpoint with conservative masking. MySQL 8.0/8.4 and MariaDB 10.11/11.4 are supported. SQLite is available for local development and tests.
+This is v0.3.0 with conservative masking. MySQL 8.0/8.4 and MariaDB 10.11/11.4 are supported. SQLite is available for local development and tests.
 
 ```sh
 python3 -m venv .venv

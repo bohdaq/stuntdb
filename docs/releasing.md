@@ -1,6 +1,6 @@
 # Release checklist
 
-The current package checkpoint is `0.3.0a1`. Preparing artifacts does not publish them. A stable release remains gated on independent validation and a configured private security-reporting route.
+The current version is `0.3.0`. The owner waived independent validation in issue #2 on 2026-10-05; no outside-user result is claimed. Private vulnerability reporting is enabled.
 
 ## Reproduce checks
 
@@ -8,23 +8,22 @@ The current package checkpoint is `0.3.0a1`. Preparing artifacts does not publis
 python -m pip install -e '.[dev,docs,release]'
 python -m pytest -q
 python scripts/package_smoke.py
-python -m twine check dist/*
+python -m twine check dist/stuntdb-0.3.0*
 python -m mkdocs build --strict
 ```
 
-Start with an empty `dist/` directory; the smoke script refuses ambiguous wheel/sdist selections. It builds source and wheel distributions, installs each in its own clean environment, checks dependency metadata and version agreement, invokes the installed CLI from outside the checkout, and runs the complete synthetic workflow. It neither uploads packages nor deletes existing release artifacts.
+The smoke script selects the current version's wheel and sdist, installs each in a clean environment, checks dependency metadata/version agreement and runs the complete synthetic workflow outside the checkout. Older artifacts are preserved. CI also covers Python 3.10, 3.12 and 3.14 and all four supported server series.
 
-CI repeats these checks across Python 3.10, 3.12 and 3.14 and runs integrations/zoo against all four supported server series. Require all relevant jobs to pass on the exact commit being released. Inspect release artifact metadata and license inclusion before publishing.
+## GitHub release
 
-## Before a stable release
+Synchronize package/runtime versions and release notes. Push main and require the Tests workflow to pass on that exact commit. Then push `vVERSION`. The release workflow checks the successful main CI run, validates the tag/version, builds and smoke-tests packages, checks metadata, creates SHA-256 checksums and publishes the GitHub release assets.
 
-- Complete and record [outside-user validation](outside-user-validation.md); resolve release-blocking feedback.
-- Configure a private vulnerability reporting route and update the security policy with the verified channel.
-- Review schema-version migration notes and masking/load limits.
-- Confirm the docs site and clean-install instructions are usable.
-- Select and synchronize package and runtime version; build and verify fresh artifacts.
-- Create a reviewed release/tag and publish artifacts only when explicitly requested. PyPI credentials or trusted-publishing setup are not part of this checkpoint.
+## PyPI publication
+
+Configure a pending trusted publisher at PyPI for project `stuntdb`, owner `bohdaq`, repository `stuntdb`, workflow `publish.yml`, environment `pypi`. This requires the owner's PyPI account. See [PyPI's setup instructions](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+
+After configuration, manually run **Publish to PyPI** with the existing release tag (for example `v0.3.0`). It downloads the GitHub release assets, verifies their checksums and uploads those same artifacts using short-lived trusted-publishing credentials. The GitHub release does not imply PyPI publication.
 
 ## Docs deployment
 
-Pull requests build the docs in strict mode. Main pushes deploy the built static site through the GitHub Pages Actions environment. Pages must be configured to use GitHub Actions as its publishing source. Deployment uses Pages/id-token permissions; no package publishing credential is involved.
+Pull requests build docs in strict mode. Main pushes deploy through GitHub Pages Actions. Review [migration notes](release-notes.md), [security](security.md) and [validation status](outside-user-validation.md) before each release.

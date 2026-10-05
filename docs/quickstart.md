@@ -1,9 +1,9 @@
 # Quick start
 
-Use Python 3.10 or newer and a fresh virtual environment. This alpha is installed from the repository; no PyPI publication is implied.
+Use Python 3.10 or newer and a fresh virtual environment. Install the tagged release from the repository using the commands below. PyPI publication is a separate step.
 
 ```sh
-git clone https://github.com/bohdaq/stuntdb.git
+git clone --branch v0.3.0 https://github.com/bohdaq/stuntdb.git
 cd stuntdb
 python3 -m venv .venv
 . .venv/bin/activate

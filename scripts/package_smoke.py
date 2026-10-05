@@ -2,6 +2,7 @@
 """Install wheel and sdist into isolated environments, then run the real demo."""
 from pathlib import Path
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -12,10 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     subprocess.run([sys.executable, '-m', 'build', str(ROOT)], check=True)
-    wheel = list((ROOT / 'dist').glob('stuntdb-*.whl'))
-    sdist = list((ROOT / 'dist').glob('stuntdb-*.tar.gz'))
+    version = runpy.run_path(str(ROOT / 'src/stuntdb/__init__.py'))['__version__']
+    wheel = list((ROOT / 'dist').glob(f'stuntdb-{version}-*.whl'))
+    sdist = list((ROOT / 'dist').glob(f'stuntdb-{version}.tar.gz'))
     if len(wheel) != 1 or len(sdist) != 1:
-        raise RuntimeError('Expected one wheel and sdist; clean dist before running')
+        raise RuntimeError('Expected one wheel and sdist for the current version')
     for artifact in (wheel[0], sdist[0]):
         with tempfile.TemporaryDirectory(prefix='stuntdb-package-') as tmp:
             directory = Path(tmp)

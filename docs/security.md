@@ -1,7 +1,9 @@
 # Security
 
-stuntdb is alpha software. See [masking scope](masking.md), [detection limits](detection.md) and [loading constraints](loading.md) before using it with real data.
+stuntdb implements conservative masking and extracted-value leak detection. Review the documented masking, detection and loading limits before using real data. Version 0.3.x is the currently supported release series; use the latest patch release.
 
-Never include credentials, database URLs, dumps or personal data in public issues. A dedicated private vulnerability-reporting route is not yet configured and remains a stable-release prerequisite. Until it is configured, privately contact the repository owner through an existing private contact. If none is available, open an issue requesting a private contact without vulnerability details.
+Report vulnerabilities privately using [GitHub private vulnerability reporting](https://github.com/bohdaq/stuntdb/security/advisories/new). This route is enabled for the repository. Include the affected version, a minimal synthetic reproduction and the impact. Never include credentials, database URLs, real dumps or personal data in public issues or reports.
 
-The repository's authoritative policy is [SECURITY.md](https://github.com/bohdaq/stuntdb/blob/main/SECURITY.md). Outside-user validation should use synthetic or approved disposable fixtures.
+Independent outside-user validation was waived by the owner for v0.3.0 and has not been performed. A release number is not a guarantee that every sensitive value or application relationship is covered.
+
+See [masking scope](masking.md), [detection limits](detection.md) and [loading constraints](loading.md).
