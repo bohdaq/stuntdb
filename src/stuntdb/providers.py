@@ -52,6 +52,9 @@ def _magnitude(value, random_value, bounds):
 
 
 def provide(action, value, salt, domain, columns, length):
+    # Empty optional fields contain no identifier and must remain empty.
+    if action in {'email', 'phone', 'name'} and value == '':
+        return ''
     canonical = value.isoformat() if isinstance(value, date) else str(value)
     payload = json.dumps([action, domain, canonical], ensure_ascii=False, separators=(',', ':')).encode()
     digest = hmac.new(salt.encode(), payload, hashlib.sha256).digest()

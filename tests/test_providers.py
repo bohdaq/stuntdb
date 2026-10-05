@@ -13,6 +13,11 @@ from stuntdb.providers import provide, validate_provider
 SALT = 'test-only-project-salt-1234567890'
 
 
+@pytest.mark.parametrize('action', ['email', 'phone', 'name'])
+def test_empty_string_provider_fields(action):
+    assert result(action, '', sa.String(100)).rows['person'][0]['value'] == ''
+
+
 def result(action, value, kind):
     m = sa.MetaData()
     sa.Table('person', m, sa.Column('id', sa.Integer, primary_key=True), sa.Column('value', kind))
