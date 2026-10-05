@@ -45,10 +45,9 @@ def roundtrip(engine, result):
         for statement in ddl:
             c.exec_driver_sql(statement)
         c.exec_driver_sql("SET FOREIGN_KEY_CHECKS=1")
-        with c.connection.driver_connection.cursor() as cursor:
-            for line in script.splitlines():
-                if not line.startswith("--"):
-                    cursor.execute(line)
+        c.commit()
+        from stuntdb.loading import load_export
+        load_export(engine, script.encode(), manifest)
         # Compare every restored row, including non-key types and empty tables.
         verify_database(c, manifest)
         for name, expected in result.rows.items():

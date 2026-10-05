@@ -147,6 +147,29 @@ def verify_command(target: str, manifest: Path = typer.Option(...),
         raise typer.Exit(1)
 
 
+@app.command('load')
+def load_command(export: Path, target: str = typer.Option(...),
+                 manifest: Path | None = None):
+    """Load a verified stuntdb export into an empty matching target schema."""
+    engine = None
+    try:
+        from stuntdb.loading import load_export
+        receipt = load_manifest(manifest or Path(str(export) + '.manifest.json'))
+        content = export.read_bytes()
+        engine = engine_for(target)
+        load_export(engine, content, receipt)
+        typer.echo('Loaded and verified row counts and foreign keys. Leak detection was not rerun.')
+    except IntegrityError:
+        typer.echo('Load failed: checksum, schema, empty-table or integrity check. Import rolled back.', err=True)
+        raise typer.Exit(3)
+    except Exception:
+        typer.echo('Load failed; check export format, manifest, target permissions and transactional schema. Import rolled back.', err=True)
+        raise typer.Exit(1)
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+
 @app.command()
 def init(source: str, output: Path = typer.Option(Path('stuntdb.json'), '--output', '-o'),
          sample_rows: int = typer.Option(100, min=0, max=1000)):

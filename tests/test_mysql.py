@@ -224,3 +224,41 @@ def test_mysql_provider_roundtrip(mysql_engine):
         assert c.exec_driver_sql('SELECT @@FOREIGN_KEY_CHECKS').scalar_one() == 1
         c.exec_driver_sql('DROP TABLE provider_order')
         c.exec_driver_sql('DROP TABLE provider_person')
+
+
+def test_mysql_transactional_loader(mysql_engine, tmp_path):
+    import json
+    import hashlib
+    from stuntdb.manifest import build_manifest
+    with consistent_source(mysql_engine) as c:
+        result = extract(c, 'a', 'id', '1')
+    sql = sql_export(result, mysql_engine.dialect)
+    receipt = build_manifest(result, sql, 'mysql', {})
+    path = tmp_path / 'load.sql'
+    manifest = tmp_path / 'load.sql.manifest.json'
+    url = mysql_engine.url.render_as_string(hide_password=False)
+    with mysql_engine.begin() as c:
+        c.exec_driver_sql('SET FOREIGN_KEY_CHECKS=0')
+        for table in result.metadata.tables.values():
+            c.execute(table.delete())
+        c.exec_driver_sql('SET FOREIGN_KEY_CHECKS=1')
+    # Same valid format/counts/checksum, with an unresolved FK; both inserts roll back.
+    broken = sql.replace('(1, 2,', '(1, 999,')
+    assert broken != sql
+    path.write_text(broken)
+    bad_receipt = dict(receipt, export_sha256=hashlib.sha256(broken.encode()).hexdigest())
+    manifest.write_text(json.dumps(bad_receipt))
+    runner = CliRunner()
+    args = ['load', str(path), '--target', url]
+    assert runner.invoke(app, args).exit_code == 3
+    with mysql_engine.connect() as c:
+        assert c.exec_driver_sql('SELECT COUNT(*) FROM a').scalar_one() == 0
+        assert c.exec_driver_sql('SELECT COUNT(*) FROM b').scalar_one() == 0
+    path.write_text(sql)
+    manifest.write_text(json.dumps(receipt))
+    loaded = runner.invoke(app, args)
+    assert loaded.exit_code == 0, loaded.output
+    assert runner.invoke(app, args).exit_code == 3
+    with mysql_engine.connect() as c:
+        assert c.exec_driver_sql('SELECT id, b_id, derived FROM a').one() == (1, 2, 2)
+        assert c.exec_driver_sql('SELECT @@FOREIGN_KEY_CHECKS').scalar_one() == 1
